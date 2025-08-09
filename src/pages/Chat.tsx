@@ -202,7 +202,7 @@ export default function Chat() {
           >
             <RxHamburgerMenu size={20} />
           </button>
-          <div className="text-base font-semibold tracking-wide">SADIA</div>
+          <div className="text-base brand-font">SADIA</div>
           <button onClick={resetChat} aria-label="New chat" className="text-sm px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200">
             New
           </button>
@@ -228,7 +228,7 @@ export default function Chat() {
           }`}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-            <div className="font-semibold tracking-wide">SADIA</div>
+            <div className="font-semibold brand-font">SADIA</div>
             <button
               aria-label="Close"
               className="p-2 rounded-lg hover:bg-gray-100"

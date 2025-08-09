@@ -16,7 +16,7 @@ export default function Home() {
         <div className="absolute left-1/2 top-[-10%] h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-gradient-to-br from-black/10 to-black/0 blur-3xl" />
       </div>
 
-      <header className="absolute top-5 left-1/2 -translate-x-1/2 text-sm font-semibold tracking-wide px-3 py-1 rounded-full border border-gray-200/80 glass card-shadow fade-up">SADIA</header>
+  <header className="absolute top-5 left-1/2 -translate-x-1/2 text-sm px-3 py-1 rounded-full border border-gray-200/80 glass card-shadow fade-up brand-font">SADIA</header>
 
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 text-center fade-up">
         <h1 className="mb-3 text-4xl font-semibold tracking-tight">
