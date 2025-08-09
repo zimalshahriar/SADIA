@@ -1,8 +1,21 @@
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Navbar from "./components/Navbar";
+import Home from "./pages/Home";
+import Chat from "./pages/Chat";
+import Settings from "./pages/Settings";
+
 function App() {
   return (
-    <div className="flex items-center justify-center h-screen bg-gray-100 text-4xl font-bold text-yellow-700">
-      SADIA is Live 🚀
-    </div>
+    <Router>
+      <div className="min-h-screen bg-gray-100">
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
