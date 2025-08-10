@@ -3,12 +3,12 @@ import { getFirestore } from "firebase/firestore";
 
 // TODO: Replace with your Firebase project's config
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyDcwBbSqjFOb7vGvszwjSoTX-LJQtqEm2E",
+  authDomain: "sadia-a6e31.firebaseapp.com",
+  projectId: "sadia-a6e31",
+  storageBucket: "sadia-a6e31.firebasestorage.app",
+  messagingSenderId: "410486513379",
+  appId: "1:410486513379:web:36784725bf939fc93dafd6"
 };
 
 const app = initializeApp(firebaseConfig);
