@@ -29,7 +29,7 @@ type Program = {
 const ADMIN_PASSWORD = "sadia-admin-123"; // change in code when needed
 
 export default function Admin() {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => localStorage.getItem("sadia_admin_authed") === "true");
   const [pw, setPw] = useState("");
   const [tab, setTab] = useState<"add" | "view">("add");
   const [status, setStatus] = useState<string | null>(null);
@@ -46,6 +46,7 @@ export default function Admin() {
   // data state
   const [items, setItems] = useState<Program[]>([]);
   const [filter, setFilter] = useState<{ level?: string; country?: string; q?: string }>({});
+  const [countrySuggestions, setCountrySuggestions] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,10 +64,17 @@ export default function Admin() {
     e.preventDefault();
     if (pw === ADMIN_PASSWORD) {
       setAuthed(true);
+      localStorage.setItem("sadia_admin_authed", "true"); // persist auth
       setStatus(null);
     } else {
       setStatus("Wrong password");
     }
+  }
+
+  // Add a logout function
+  function logout() {
+    setAuthed(false);
+    localStorage.removeItem("sadia_admin_authed");
   }
 
   async function addProgram(e: React.FormEvent) {
@@ -124,10 +132,20 @@ export default function Admin() {
     setEditingId(null);
   }
 
+  // Collect unique country names for suggestions
+  const allCountries = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((it) => {
+      if (it.country) set.add(it.country);
+    });
+    return Array.from(set).sort();
+  }, [items]);
+
+  // Filtered items
   const filtered = useMemo(() => {
     return items.filter((it) => {
       if (filter.level && it.level !== filter.level) return false;
-      if (filter.country && it.country.toLowerCase() !== filter.country.toLowerCase()) return false;
+      if (filter.country && filter.country.length > 0 && !it.country.toLowerCase().includes(filter.country.toLowerCase())) return false;
       if (filter.q) {
         const q = filter.q.toLowerCase();
         const blob = `${it.courseName} ${it.university} ${it.city} ${it.country}`.toLowerCase();
@@ -136,6 +154,18 @@ export default function Admin() {
       return true;
     });
   }, [items, filter]);
+
+  // Update country suggestions as user types
+  useEffect(() => {
+    if (!filter.country || filter.country.length === 0) {
+      setCountrySuggestions([]);
+      return;
+    }
+    const input = filter.country.toLowerCase();
+    setCountrySuggestions(
+      allCountries.filter((c) => c.toLowerCase().includes(input)).slice(0, 6)
+    );
+  }, [filter.country, allCountries]);
 
   if (!authed) {
     return (
@@ -157,14 +187,14 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen grid grid-cols-[220px_1fr]">
+    <div className="min-h-screen grid grid-cols-[220px_1fr] bg-white bg-fixed bg-no-repeat">
       {/* Sidebar */}
       <aside className="border-r border-gray-200 p-4">
         <div className="mb-4 text-base font-semibold brand-font">SADIA Admin</div>
         <nav className="space-y-2 text-sm">
           <button onClick={() => setTab("add")} className={`block w-full text-left rounded-lg px-3 py-2 ${tab === "add" ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}>Add</button>
           <button onClick={() => setTab("view")} className={`block w-full text-left rounded-lg px-3 py-2 ${tab === "view" ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}>View</button>
-          <a href="/home" className="block rounded-lg px-3 py-2 hover:bg-gray-100 text-red-600">Logout</a>
+          <button onClick={logout} className="block rounded-lg px-3 py-2 hover:bg-gray-100 text-red-600">Logout</button>
         </nav>
       </aside>
 
@@ -219,7 +249,28 @@ export default function Admin() {
                 <option value="Bachelors">Bachelor's</option>
                 <option value="Masters">Master's</option>
               </select>
-              <input placeholder="Country" className="rounded-lg border border-gray-300 px-3 py-2" value={filter.country || ""} onChange={(e) => setFilter((f) => ({ ...f, country: e.target.value || undefined }))} />
+              <div className="relative">
+                <input
+                  placeholder="Country"
+                  className="rounded-lg border border-gray-300 px-3 py-2 w-full"
+                  value={filter.country || ""}
+                  onChange={(e) => setFilter((f) => ({ ...f, country: e.target.value }))}
+                  autoComplete="off"
+                />
+                {countrySuggestions.length > 0 && (
+                  <ul className="absolute z-10 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow mt-1 max-h-40 overflow-auto">
+                    {countrySuggestions.map((c) => (
+                      <li
+                        key={c}
+                        className="px-3 py-2 cursor-pointer hover:bg-gray-100"
+                        onClick={() => setFilter((f) => ({ ...f, country: c }))}
+                      >
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-gray-200">
