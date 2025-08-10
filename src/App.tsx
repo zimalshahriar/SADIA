@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
+import Admin from "./pages/Admin";
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
   <Route path="/home" element={<Home />} />
   <Route path="/chat" element={<Chat />} />
   <Route path="/settings" element={<Settings />} />
+  <Route path="/admin" element={<Admin />} />
       </Routes>
     </BrowserRouter>
   );
