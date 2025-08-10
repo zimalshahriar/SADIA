@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebase/config";
 import {
   addDoc,
@@ -28,6 +28,32 @@ type Program = {
 
 const ADMIN_PASSWORD = "sadia-admin-123"; // change in code when needed
 
+// Small helper to smoothly mount/unmount sections
+function FadeSection({ show, children }: { show: boolean; children: React.ReactNode }) {
+  const [render, setRender] = useState(show);
+  const [visible, setVisible] = useState(show);
+  const DURATION = 240; // ms
+
+  useEffect(() => {
+    if (show) {
+      setRender(true);
+      const t = setTimeout(() => setVisible(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setVisible(false);
+      const t = setTimeout(() => setRender(false), DURATION);
+      return () => clearTimeout(t);
+    }
+  }, [show]);
+
+  if (!render) return null;
+  return (
+    <div className={`transition-all duration-200 ease-out ${visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-1 scale-[0.99]"}`}>
+      {children}
+    </div>
+  );
+}
+
 export default function Admin() {
   const [authed, setAuthed] = useState(() => localStorage.getItem("sadia_admin_authed") === "true");
   const [pw, setPw] = useState("");
@@ -48,6 +74,10 @@ export default function Admin() {
   const [filter, setFilter] = useState<{ level?: string; country?: string; q?: string }>({});
   const [countrySuggestions, setCountrySuggestions] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!authed) return;
@@ -80,8 +110,10 @@ export default function Admin() {
   async function addProgram(e: React.FormEvent) {
     e.preventDefault();
     setStatus(null);
+    setSaving(true);
     if (!courseName || !university) {
       setStatus("Course name and University are required.");
+      setSaving(false);
       return;
     }
     // uniqueness: course+university pair
@@ -93,9 +125,11 @@ export default function Admin() {
     const exists = (await getDocs(uniqueQ)).size > 0;
     if (exists) {
       setStatus("This course at this university already exists.");
+      setSaving(false);
       return;
     }
-    await addDoc(collection(db, "programs"), {
+    try {
+      const ref = await addDoc(collection(db, "programs"), {
       courseName: courseName.trim(),
       level,
       university: university.trim(),
@@ -105,13 +139,20 @@ export default function Admin() {
       about: about.trim(),
       createdAt: serverTimestamp(),
     });
-    setStatus("Saved.");
+      // Smooth transition to View with highlight
+      setLastAddedId(ref.id);
+      setTab("view");
+      setBanner("Saved");
+      setTimeout(() => setBanner(null), 2500);
     setCourseName("");
     setUniversity("");
     setCity("");
     setCountry("");
     setTuitionBDT("");
     setAbout("");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function remove(id: string) {
@@ -167,15 +208,31 @@ export default function Admin() {
     );
   }, [filter.country, allCountries]);
 
+  // Scroll to top when switching to View so the new item is visible (ordered desc)
+  useEffect(() => {
+    if (tab === "view") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+  // gently focus search to guide next action
+  setTimeout(() => searchRef.current?.focus(), 220);
+    }
+  }, [tab]);
+
+  // Auto-clear highlight after a few seconds
+  useEffect(() => {
+    if (!lastAddedId) return;
+    const t = setTimeout(() => setLastAddedId(null), 3000);
+    return () => clearTimeout(t);
+  }, [lastAddedId]);
+
   if (!authed) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
-        <form onSubmit={login} className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-4 card-shadow">
+        <form onSubmit={login} className="w-full max-w-sm rounded-2xl border border-white/20 bg-white/60 backdrop-blur glass p-4 card-shadow">
           <h1 className="mb-3 text-lg font-semibold brand-font">SADIA Admin</h1>
           {status && <div className="mb-2 text-sm text-red-600">{status}</div>}
           <input
             type="password"
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 mb-3"
+            className="w-full rounded-lg border border-gray-300/70 bg-white/80 px-3 py-2 mb-3"
             placeholder="Enter admin password"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
@@ -187,21 +244,54 @@ export default function Admin() {
   }
 
   return (
-    <div className="min-h-screen grid grid-cols-[220px_1fr] bg-white bg-fixed bg-no-repeat">
-      {/* Sidebar */}
-      <aside className="border-r border-gray-200 p-4">
-        <div className="mb-4 text-base font-semibold brand-font">SADIA Admin</div>
-        <nav className="space-y-2 text-sm">
-          <button onClick={() => setTab("add")} className={`block w-full text-left rounded-lg px-3 py-2 ${tab === "add" ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}>Add</button>
-          <button onClick={() => setTab("view")} className={`block w-full text-left rounded-lg px-3 py-2 ${tab === "view" ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}>View</button>
-          <button onClick={logout} className="block rounded-lg px-3 py-2 hover:bg-gray-100 text-red-600">Logout</button>
-        </nav>
-      </aside>
+    <div className="min-h-screen">
+      {/* Mobile/top header */}
+      <header className="sticky top-0 z-30 w-full border-b border-white/20 bg-white/70 backdrop-blur glass">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+          <div className="text-base font-semibold brand-font">SADIA Admin</div>
+          {/* Mobile actions with animated segmented control */}
+          <div className="flex items-center gap-2 md:hidden">
+            <div className="relative inline-flex w-[220px] rounded-xl bg-black/5 p-1">
+              <span
+                className={`absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-lg bg-black transition-transform duration-200 ${tab === 'view' ? 'translate-x-full' : 'translate-x-0'}`}
+              />
+              <button
+                onClick={() => setTab('add')}
+                className={`relative z-10 flex-1 px-3 py-1.5 text-sm transition-colors ${tab === 'add' ? 'text-white' : 'text-black'}`}
+              >Add</button>
+              <button
+                onClick={() => setTab('view')}
+                className={`relative z-10 flex-1 px-3 py-1.5 text-sm transition-colors ${tab === 'view' ? 'text-white' : 'text-black'}`}
+              >View</button>
+            </div>
+            <button onClick={logout} className="ml-1 rounded-md px-3 py-1.5 text-sm bg-red-50 text-red-600">Logout</button>
+          </div>
+        </div>
+        {/* Banner */}
+        {banner && (
+          <div className="mx-auto max-w-6xl px-4 pb-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-sm">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+              {banner}
+            </div>
+          </div>
+        )}
+      </header>
 
-      {/* Content */}
-      <main className="p-4">
-        {tab === "add" && (
-          <form onSubmit={addProgram} className="max-w-2xl space-y-3">
+      <div className="mx-auto grid md:grid-cols-[240px_1fr] max-w-6xl">
+        {/* Sidebar (desktop) */}
+    <aside className="hidden md:block border-r border-gray-200/70 p-4">
+          <nav className="space-y-2 text-sm">
+      <button onClick={() => setTab("add")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "add" ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}>Add</button>
+      <button onClick={() => setTab("view")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "view" ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}>View</button>
+            <button onClick={logout} className="block rounded-lg px-3 py-2 hover:bg-gray-100 text-red-600">Logout</button>
+          </nav>
+        </aside>
+
+        {/* Content */}
+        <main className="p-4">
+        <FadeSection show={tab === "add"}>
+          <form onSubmit={addProgram} className="max-w-2xl space-y-3 mx-auto">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="text-xs text-gray-600">Course name</label>
@@ -235,15 +325,23 @@ export default function Admin() {
               <label className="text-xs text-gray-600">About</label>
               <textarea className="w-full rounded-lg border border-gray-300 px-3 py-2" rows={4} value={about} onChange={(e) => setAbout(e.target.value)} />
             </div>
-            <button className="rounded-lg bg-black text-white px-4 py-2">Save</button>
+            <button disabled={saving} className={`rounded-lg px-4 py-2 ${saving ? 'bg-black/60 text-white cursor-not-allowed' : 'bg-black text-white hover:opacity-90'} flex items-center gap-2`}>
+              {saving && (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+              )}
+              {saving ? 'Saving...' : 'Save'}
+            </button>
             {status && <div className="text-sm mt-2">{status}</div>}
           </form>
-        )}
+        </FadeSection>
 
-        {tab === "view" && (
-          <div>
+        <FadeSection show={tab === "view"}>
+          <div className="mx-auto max-w-5xl">
             <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <input placeholder="Search..." className="rounded-lg border border-gray-300 px-3 py-2" value={filter.q || ""} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} />
+              <input ref={searchRef} placeholder="Search..." className="rounded-lg border border-gray-300 px-3 py-2" value={filter.q || ""} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} />
               <select className="rounded-lg border border-gray-300 px-3 py-2" value={filter.level || ""} onChange={(e) => setFilter((f) => ({ ...f, level: e.target.value || undefined }))}>
                 <option value="">All levels</option>
                 <option value="Bachelors">Bachelor's</option>
@@ -258,7 +356,7 @@ export default function Admin() {
                   autoComplete="off"
                 />
                 {countrySuggestions.length > 0 && (
-                  <ul className="absolute z-10 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow mt-1 max-h-40 overflow-auto">
+                  <ul className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow mt-1 max-h-40 overflow-auto">
                     {countrySuggestions.map((c) => (
                       <li
                         key={c}
@@ -273,7 +371,8 @@ export default function Admin() {
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
@@ -288,7 +387,10 @@ export default function Admin() {
                 </thead>
                 <tbody>
                   {filtered.map((p) => (
-                    <tr key={p.id} className="border-t">
+                    <tr
+                      key={p.id}
+                      className={`border-t ${lastAddedId === p.id ? "bg-emerald-50/70" : ""}`}
+                    >
                       <td className="px-3 py-2">{editingId === p.id ? (
                         <input className="w-full border rounded px-2 py-1" value={p.courseName} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, courseName: e.target.value } : it))} />
                       ) : p.courseName}</td>
@@ -331,9 +433,74 @@ export default function Admin() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-3">
+              {filtered.map((p) => (
+                <div
+                  key={p.id}
+                  className={`rounded-xl border bg-white/70 backdrop-blur p-3 card-shadow ${lastAddedId === p.id ? "border-emerald-300 ring-2 ring-emerald-200" : "border-gray-200"}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="font-medium">{p.courseName}</div>
+                    {editingId !== p.id ? (
+                      <div className="flex gap-2">
+                        <button className="rounded border px-2 py-1 text-xs" onClick={() => setEditingId(p.id!)}>Edit</button>
+                        <button className="rounded border px-2 py-1 text-xs text-red-600" onClick={() => remove(p.id!)}>Delete</button>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Level</span>
+                      {editingId === p.id ? (
+                        <select className="border rounded px-2 py-1" value={p.level} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, level: e.target.value as any } : it))}>
+                          <option value="Bachelors">Bachelor's</option>
+                          <option value="Masters">Master's</option>
+                        </select>
+                      ) : <span>{p.level}</span>}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">University</span>
+                      {editingId === p.id ? (
+                        <input className="border rounded px-2 py-1 w-40 text-right" value={p.university} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, university: e.target.value } : it))} />
+                      ) : <span className="text-right">{p.university}</span>}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Location</span>
+                      {editingId === p.id ? (
+                        <div className="flex gap-2">
+                          <input className="border rounded px-2 py-1 w-24" placeholder="City" value={p.city} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, city: e.target.value } : it))} />
+                          <input className="border rounded px-2 py-1 w-28" placeholder="Country" value={p.country} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, country: e.target.value } : it))} />
+                        </div>
+                      ) : <span className="text-right">{`${p.city ? p.city + ', ' : ''}${p.country}`}</span>}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-600">Tuition (BDT)</span>
+                      {editingId === p.id ? (
+                        <input type="number" className="border rounded px-2 py-1 w-28 text-right" value={p.tuitionBDT} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, tuitionBDT: Number(e.target.value) } : it))} />
+                      ) : <span className="text-right">{p.tuitionBDT?.toLocaleString()}</span>}
+                    </div>
+                    <div>
+                      <div className="text-gray-600">About</div>
+                      {editingId === p.id ? (
+                        <textarea className="mt-1 w-full border rounded px-2 py-1" rows={3} value={p.about} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, about: e.target.value } : it))} />
+                      ) : <p className="mt-1">{p.about}</p>}
+                    </div>
+                  </div>
+                  {editingId === p.id ? (
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button className="rounded border px-2 py-1" onClick={() => saveEdit(p)}>Save</button>
+                      <button className="rounded border px-2 py-1" onClick={() => setEditingId(null)}>Cancel</button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-      </main>
+        </FadeSection>
+        </main>
+      </div>
     </div>
   );
 }
