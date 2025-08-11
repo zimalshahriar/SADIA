@@ -42,8 +42,8 @@ export default function Settings() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="sticky top-0 bg-white/70 backdrop-blur border-b border-gray-200 px-4 py-3">
+    <div className="min-h-screen bg-app">
+      <header className="sticky top-0 bg-surface border-b border-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             aria-label="Back to chat"
@@ -58,21 +58,21 @@ export default function Settings() {
 
       <main className="max-w-xl mx-auto px-4 py-4 fade-up">
         {status && (
-          <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 card-shadow">
+          <div className="mb-4 rounded-lg border border-soft bg-card px-3 py-2 text-sm card-shadow">
             {status}
           </div>
         )}
 
         <section className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">Data</h2>
-          <div className="rounded-2xl border border-gray-200 divide-y card-shadow">
+          <h2 className="mb-2 text-sm font-semibold text-muted">Data</h2>
+          <div className="rounded-2xl border border-soft divide-y card-shadow bg-card">
             <div className="p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Clear chat history</div>
-                  <div className="text-xs text-gray-500">Remove all your conversations from this device.</div>
+                  <div className="text-xs text-muted">Remove all your conversations from this device.</div>
                 </div>
-                <button onClick={() => setConfirmClearOpen(true)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 hover-grow">
+                <button onClick={() => setConfirmClearOpen(true)} className="rounded-lg border border-soft bg-card px-3 py-1.5 text-sm hover:bg-gray-50 hover-grow">
                   Clear
                 </button>
               </div>
@@ -81,9 +81,9 @@ export default function Settings() {
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">Danger zone</h2>
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-3 card-shadow">
-            <div className="mb-2 text-sm">Permanently delete your account data on this device.</div>
+          <h2 className="mb-2 text-sm font-semibold text-muted">Danger zone</h2>
+          <div className="rounded-2xl border border-red-200 bg-red-50/80 p-3 card-shadow">
+            <div className="mb-2 text-sm text-primary">Permanently delete your account data on this device.</div>
             <button onClick={() => setConfirmDelete1Open(true)} className="rounded-lg bg-red-600 text-white px-3 py-1.5 text-sm hover:opacity-90 hover-grow">
               Delete account
             </button>

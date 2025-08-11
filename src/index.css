@@ -1,9 +1,54 @@
 @import "tailwindcss";
 
 :root {
-	--bg-gradient: radial-gradient(1200px 600px at 50% -10%, rgba(0,0,0,0.06), transparent 50%),
-									radial-gradient(800px 400px at 100% 10%, rgba(0,0,0,0.05), transparent 50%),
-									radial-gradient(800px 400px at 0% 10%, rgba(0,0,0,0.05), transparent 50%);
+	/* Theme palette based on provided colors */
+	--brand-dark: #2f2f35;
+	--accent: #91a5b2; /* blue-gray */
+	--accent-2: #92a6b3;
+	/* Explicit palette entries (user-provided) */
+	--pal-1: #c8ddeb;
+	--pal-2: #92a6b3;
+	--pal-3: #c9deec;
+	--pal-4: #cadfed;
+	--pal-5: #91a5b2;
+	--pal-6: #90a4b1;
+	--pal-7: #cadeec;
+	--pal-8: #c0d5e3;
+	--pal-9: #c4d9e7;
+	--pal-10: #c3d8e6;
+	--pal-11: #c7dcea;
+	--pal-12: #c1d6e4;
+		/* Back-compat tint aliases */
+		--tint-1: var(--pal-1);
+		--tint-2: var(--pal-3);
+		--tint-3: var(--pal-7);
+		--tint-4: var(--pal-8);
+		--tint-5: var(--pal-9);
+		--tint-6: var(--pal-10);
+		--tint-7: var(--pal-11);
+		--tint-8: var(--pal-12);
+		--tint-9: #c6dbe9; /* extra soft tint retained */
+		--tint-10: var(--pal-3);
+
+	/* Semantic tokens */
+	--bg: #f7fafc; /* light base to keep contrast */
+	--text: var(--brand-dark);
+	--muted: #5b6872;
+	--surface: rgba(255,255,255,0.75);
+	--card: rgba(255,255,255,0.85);
+	--border: #d3e3ee; /* soft border derived from tints */
+	--primary: var(--brand-dark);
+	--on-primary: #ffffff;
+	--accent-bg: var(--accent);
+	--on-accent: #ffffff;
+	--assistant-bubble: #e7f1f7; /* lifted from palette tints */
+
+	/* Background gradient using tints */
+		--bg-gradient:
+			radial-gradient(1200px 600px at 50% -10%, color-mix(in oklab, var(--pal-3) 35%, transparent), transparent 55%),
+			radial-gradient(900px 420px at 100% 12%, color-mix(in oklab, var(--pal-8) 28%, transparent), transparent 55%),
+			radial-gradient(900px 420px at 0% 12%, color-mix(in oklab, var(--pal-9) 24%, transparent), transparent 55%),
+			radial-gradient(1000px 520px at 10% 90%, color-mix(in oklab, var(--pal-11) 18%, transparent), transparent 60%);
 }
 
 html, body, #root {
@@ -12,15 +57,71 @@ html, body, #root {
 
 body {
 	font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
-	background: var(--bg-gradient), #fff;
-	color: #0a0a0a;
+	background: var(--bg-gradient), var(--bg);
+	color: var(--text);
 }
+
+/* Prevent horizontal scroll due to decorative backgrounds on small screens */
+html, body { overflow-x: hidden; }
 
 .brand-font {
 	font-family: "Kanit", Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial;
 	letter-spacing: 0.01em;
-	font-weight: 600; /* a bit bold as requested */
+	font-weight: 600;
 }
+
+/* Theme utilities */
+.bg-app { background: var(--bg); }
+.bg-surface { background: var(--surface); backdrop-filter: blur(10px); }
+.bg-card { background: var(--card); backdrop-filter: blur(10px); }
+.text-primary { color: var(--text); }
+.text-muted { color: var(--muted); }
+.border-soft { border-color: var(--border); }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
+.btn-primary:hover { filter: brightness(0.92); }
+.btn-accent { background: var(--accent-bg); color: var(--on-accent); }
+.btn-accent:hover { filter: brightness(0.95); }
+.chip { border: 1px solid var(--border); background: color-mix(in oklab, var(--tint-3) 25%, #fff); }
+.bubble-assistant { background: var(--assistant-bubble); color: var(--text); }
+.bubble-user { background: var(--primary); color: var(--on-primary); }
+
+/* Palette utility classes */
+.bg-pal-1{ background-color: var(--pal-1); }
+.bg-pal-2{ background-color: var(--pal-2); }
+.bg-pal-3{ background-color: var(--pal-3); }
+.bg-pal-4{ background-color: var(--pal-4); }
+.bg-pal-5{ background-color: var(--pal-5); }
+.bg-pal-6{ background-color: var(--pal-6); }
+.bg-pal-7{ background-color: var(--pal-7); }
+.bg-pal-8{ background-color: var(--pal-8); }
+.bg-pal-9{ background-color: var(--pal-9); }
+.bg-pal-10{ background-color: var(--pal-10); }
+.bg-pal-11{ background-color: var(--pal-11); }
+.bg-pal-12{ background-color: var(--pal-12); }
+.text-pal-1{ color: var(--pal-1); }
+.text-pal-2{ color: var(--pal-2); }
+.text-pal-3{ color: var(--pal-3); }
+.text-pal-4{ color: var(--pal-4); }
+.text-pal-5{ color: var(--pal-5); }
+.text-pal-6{ color: var(--pal-6); }
+.text-pal-7{ color: var(--pal-7); }
+.text-pal-8{ color: var(--pal-8); }
+.text-pal-9{ color: var(--pal-9); }
+.text-pal-10{ color: var(--pal-10); }
+.text-pal-11{ color: var(--pal-11); }
+.text-pal-12{ color: var(--pal-12); }
+.border-pal-1{ border-color: var(--pal-1); }
+.border-pal-2{ border-color: var(--pal-2); }
+.border-pal-3{ border-color: var(--pal-3); }
+.border-pal-4{ border-color: var(--pal-4); }
+.border-pal-5{ border-color: var(--pal-5); }
+.border-pal-6{ border-color: var(--pal-6); }
+.border-pal-7{ border-color: var(--pal-7); }
+.border-pal-8{ border-color: var(--pal-8); }
+.border-pal-9{ border-color: var(--pal-9); }
+.border-pal-10{ border-color: var(--pal-10); }
+.border-pal-11{ border-color: var(--pal-11); }
+.border-pal-12{ border-color: var(--pal-12); }
 
 /* Soft card shadow */
 .card-shadow {
@@ -28,10 +129,7 @@ body {
 }
 
 /* Glass backdrop */
-.glass {
-	background: rgba(255, 255, 255, 0.7);
-	backdrop-filter: blur(10px);
-}
+.glass { background: var(--surface); backdrop-filter: blur(10px); }
 
 /* Fade-up animation */
 @keyframes fadeUp {
@@ -66,18 +164,23 @@ body {
 .aurora-blob {
 	position: absolute;
 	filter: blur(50px);
-	opacity: .25;
+	opacity: .35;
 	transform: translateZ(0);
 }
 .aurora-1 {
 	top: 10%; left: 5%; width: 475px; height: 475px;
-	background: radial-gradient(closest-side, #111 0%, transparent 70%);
+	background: radial-gradient(closest-side, color-mix(in oklab, var(--pal-3) 55%, transparent) 0%, transparent 70%);
 	animation: float1 14s ease-in-out infinite;
 }
 .aurora-2 {
 	bottom: 0%; right: 0%; width: 575px; height: 575px;
-	background: radial-gradient(closest-side, #000 0%, transparent 70%);
+	background: radial-gradient(closest-side, color-mix(in oklab, var(--pal-9) 55%, transparent) 0%, transparent 70%);
 	animation: float2 18s ease-in-out infinite;
 }
 @keyframes float1 { 0%,100% { transform: translate(0,0) } 50% { transform: translate(10px, -12px) } }
 @keyframes float2 { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-12px, 10px) } }
+
+/* Utility: hide on very small screens */
+@media (max-width: 420px) {
+	.hide-xs { display: none !important; }
+}

@@ -25,21 +25,21 @@ export default function ConfirmModal({
   const confirmClass =
     variant === "danger"
       ? "bg-red-600 text-white hover:opacity-90"
-      : "bg-black text-white hover:opacity-90";
+      : "btn-primary";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white/80 backdrop-blur p-5 card-shadow"
+        className="w-full max-w-sm rounded-2xl border border-soft bg-card backdrop-blur p-5 card-shadow"
       >
         <div className="mb-2 text-lg font-semibold">{title}</div>
         {description && (
-          <div className="mb-4 text-sm text-gray-700">{description}</div>
+          <div className="mb-4 text-sm text-muted">{description}</div>
         )}
         <div className="flex justify-end gap-2">
           <button
-            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-100"
+            className="rounded-lg border border-soft bg-card px-3 py-1.5 text-sm hover:bg-gray-100"
             onClick={onCancel}
           >
             {cancelText}

@@ -67,13 +67,13 @@ function MessageBubble({ msg }: { msg: Message }) {
   return (
     <div className={`w-full ${isUser ? "justify-end" : "justify-start"} flex mb-3`}>
       {!isUser && (
-        <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full bg-black text-white flex items-center justify-center text-xs font-semibold">
+        <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full btn-primary flex items-center justify-center text-xs font-semibold">
           S
         </div>
       )}
       <div
-        className={`max-w-[82%] rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${
-          isUser ? "bg-black text-white rounded-br-sm" : "bg-gray-100 text-gray-900 rounded-bl-sm"
+        className={`max-w-[78%] sm:max-w-[82%] rounded-2xl px-3.5 py-2 text-[15px] leading-relaxed whitespace-pre-wrap break-words ${
+          isUser ? "bubble-user rounded-br-sm" : "bubble-assistant rounded-bl-sm"
         }`}
       >
         {msg.content}
@@ -247,10 +247,10 @@ export default function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+  <div className="min-h-screen bg-app flex flex-col">
       {/* Top bar */}
-      <header className="sticky top-0 z-10 bg-white/70 backdrop-blur border-b border-gray-200">
-        <div className="flex items-center justify-between px-4 py-3">
+      <header className="sticky top-0 z-10 bg-surface border-b border-soft">
+        <div className="flex items-center justify-between px-4 py-3 gap-2">
           <button
             aria-label="Menu"
             className="p-2 -ml-2 rounded-lg hover:bg-gray-100"
@@ -258,12 +258,12 @@ export default function Chat() {
           >
             <RxHamburgerMenu size={20} />
           </button>
-          <div className="flex items-center gap-2">
-            <img src={sadiaLogo} alt="SADIA logo" className="h-7 w-7 rounded-full bg-white border border-gray-200 object-contain" />
-            <span className="text-base brand-font">SADIA</span>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <img src={sadiaLogo} alt="SADIA logo" className="h-7 w-7 shrink-0 rounded-full bg-card border border-soft object-contain" />
+            <span className="text-base brand-font truncate">SADIA</span>
             {!installed && (
               <button
-                className={`ml-2 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${canPrompt ? 'border-gray-300 hover:bg-gray-100' : 'border-dashed border-gray-300 text-gray-500'}`}
+                className={`ml-auto hide-xs inline-flex items-center gap-2 shrink-0 rounded-full border px-2.5 py-1 text-xs ${canPrompt ? 'border-soft hover:bg-gray-100' : 'border-dashed border-soft text-gray-600'}`}
                 onClick={() => setShowPrompt(true)}
               >
                 Install app
@@ -277,7 +277,7 @@ export default function Chat() {
               else resetChat();
             }}
             aria-label="New chat"
-            className="text-sm px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200"
+            className="shrink-0 text-sm px-2 py-1 rounded-md bg-card hover:bg-gray-100 border border-soft"
           >
             New
           </button>
@@ -286,22 +286,22 @@ export default function Chat() {
       {/* PWA Install Prompt Popup */}
       {showPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-xs w-full text-center card-shadow fade-up">
-            <img src={sadiaLogo} alt="SADIA logo" className="mx-auto mb-3 h-12 w-12 rounded-full bg-white border border-gray-200 object-contain" />
+          <div className="bg-card rounded-2xl shadow-xl p-6 max-w-xs w-full text-center card-shadow fade-up border border-soft">
+            <img src={sadiaLogo} alt="SADIA logo" className="mx-auto mb-3 h-12 w-12 rounded-full bg-card border border-soft object-contain" />
             <div className="font-semibold text-lg mb-1">Install SADIA</div>
-            <div className="text-gray-600 text-sm mb-4">Get the full app experience on your device. Install SADIA to your home screen.</div>
+            <div className="text-muted text-sm mb-4">Get the full app experience on your device. Install SADIA to your home screen.</div>
             <div className="flex gap-2 justify-center">
               <button
-                className="rounded-lg bg-black text-white px-4 py-2 hover:opacity-90"
+                className="rounded-lg btn-primary px-4 py-2"
                 onClick={prompt}
               >Install</button>
               <button
-                className="rounded-lg bg-gray-100 px-4 py-2 hover:bg-gray-200"
+                className="rounded-lg bg-card border border-soft px-4 py-2 hover:bg-gray-100"
                 onClick={dismiss}
               >Maybe later</button>
             </div>
             {!canPrompt && (
-              <div className="mt-3 text-xs text-gray-500">
+              <div className="mt-3 text-xs text-muted">
                 Tip: On iOS Safari, use Share → Add to Home Screen. On desktop Chrome, use the install icon in the address bar.
               </div>
             )}
@@ -323,11 +323,11 @@ export default function Chat() {
         <aside
           role="dialog"
           aria-modal="true"
-          className={`absolute left-0 top-0 bottom-0 w-[78%] max-w-[320px] bg-white border-r border-gray-200 shadow-xl transition-transform duration-200 ${
+          className={`absolute left-0 top-0 bottom-0 w-[78%] max-w-[320px] bg-card border-r border-soft shadow-xl transition-transform duration-200 ${
             drawerOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-soft">
             <div className="font-semibold brand-font">SADIA</div>
             <button
               aria-label="Close"
@@ -346,7 +346,7 @@ export default function Chat() {
                 else resetChat();
                 setDrawerOpen(false);
               }}
-              className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"
+              className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-soft px-3 py-2 text-sm hover:bg-gray-50"
             >
               + New Chat
             </button>
@@ -369,9 +369,9 @@ export default function Chat() {
             </nav>
 
             {/* Placeholder for conversation list */}
-            <div className="mt-4 border-t border-gray-200 pt-3">
+            <div className="mt-4 border-t border-soft pt-3">
               <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Recent</div>
-              <div className="text-gray-400 text-sm">No conversations yet</div>
+              <div className="text-muted text-sm">No conversations yet</div>
             </div>
           </div>
         </aside>
@@ -384,15 +384,15 @@ export default function Chat() {
           <div className="aurora-blob aurora-1" />
           <div className="aurora-blob aurora-2" />
         </div>
-        <div className="mx-auto w-full max-w-xl">
+  <div className="mx-auto w-full max-w-xl px-0">
           {!started ? (
             <div className="mt-24 text-center fade-up">
-              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-black text-white flex items-center justify-center font-semibold">S</div>
+              <div className="mx-auto mb-4 h-12 w-12 rounded-full btn-primary flex items-center justify-center font-semibold">S</div>
               <h1 className="text-2xl font-semibold mb-2">Hey, this is SADIA</h1>
-              <p className="text-gray-600 mb-6">Your AI assistant for brainstorming, writing, and answers. Ready when you are.</p>
+              <p className="text-muted mb-6">Your AI assistant for brainstorming, writing, and answers. Ready when you are.</p>
               <button
                 onClick={startChat}
-                className="hover-grow inline-flex items-center justify-center rounded-xl bg-black text-white px-4 py-2 text-sm font-medium hover:opacity-90 card-shadow"
+                className="hover-grow inline-flex items-center justify-center rounded-xl btn-primary px-4 py-2 text-sm font-medium card-shadow"
               >
                 Start Chat
               </button>
@@ -405,7 +405,7 @@ export default function Chat() {
                     <button
                       key={s}
                       onClick={() => send(s)}
-                      className="text-left rounded-2xl border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"
+                      className="text-left rounded-2xl border border-soft px-3 py-2 text-sm hover:bg-gray-50 bg-card"
                     >
                       {s}
                     </button>
@@ -418,8 +418,8 @@ export default function Chat() {
               {/* Typing indicator when last assistant message is ellipsis */}
               {messages.length > 0 && messages[messages.length - 1]?.content === "…" && (
                 <div className="w-full justify-start flex mb-3">
-                  <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full bg-black text-white flex items-center justify-center text-xs font-semibold">S</div>
-                  <div className="max-w-[82%] rounded-2xl px-3.5 py-2 bg-gray-100 text-gray-900 rounded-bl-sm">
+                  <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full btn-primary flex items-center justify-center text-xs font-semibold">S</div>
+                  <div className="max-w-[78%] sm:max-w-[82%] rounded-2xl px-3.5 py-2 bubble-assistant rounded-bl-sm">
                     <div className="typing-dots text-gray-700">
                       <span></span><span></span><span></span>
                     </div>
@@ -462,10 +462,10 @@ export default function Chat() {
                   className="w-full resize-none outline-none text-[15px] leading-6 placeholder:text-gray-400 max-h-40"
                 />
               </div>
-              {input.trim().length === 0 ? (
+        {input.trim().length === 0 ? (
                 <button
                   aria-label="Voice input"
-                  className="shrink-0 p-2 rounded-xl bg-black text-white hover:opacity-90 hover-grow card-shadow"
+          className="shrink-0 p-2 rounded-xl btn-primary hover:opacity-90 hover-grow card-shadow"
                   onClick={() => alert("Microphone not implemented")}
                 >
                   <IoMicOutline size={18} />
@@ -473,7 +473,7 @@ export default function Chat() {
               ) : (
                 <button
                   aria-label="Send"
-                  className="shrink-0 p-2 rounded-xl bg-black text-white hover:opacity-90 hover-grow card-shadow"
+          className="shrink-0 p-2 rounded-xl btn-primary hover:opacity-90 hover-grow card-shadow"
                   onClick={() => send()}
                 >
                   <RxPaperPlane size={18} />
