@@ -10,7 +10,10 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: [],
+      includeAssets: ['sadia.png'],
+      devOptions: {
+        enabled: true,
+      },
       manifest: {
         name: 'SADIA',
         short_name: 'SADIA',
@@ -21,20 +24,26 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'sadia.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'sadia.png',
             sizes: '512x512',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'sadia.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
+          },
+          {
+            src: 'sadia.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
           }
         ]
       }
