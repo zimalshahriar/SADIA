@@ -70,12 +70,12 @@ body {
 	transform: translateZ(0);
 }
 .aurora-1 {
-	top: 10%; left: 5%; width: 380px; height: 380px;
+	top: 10%; left: 5%; width: 475px; height: 475px;
 	background: radial-gradient(closest-side, #111 0%, transparent 70%);
 	animation: float1 14s ease-in-out infinite;
 }
 .aurora-2 {
-	bottom: 0%; right: 0%; width: 460px; height: 460px;
+	bottom: 0%; right: 0%; width: 575px; height: 575px;
 	background: radial-gradient(closest-side, #000 0%, transparent 70%);
 	animation: float2 18s ease-in-out infinite;
 }

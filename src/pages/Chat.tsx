@@ -1,4 +1,55 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ConfirmModal from "../components/ConfirmModal";
+const sadiaLogo = "/sadia.png";
+// PWA install prompt logic
+function usePwaInstallPrompt() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  useEffect(() => {
+    function onBeforeInstallPrompt(e: any) {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      // Auto-show unless recently dismissed
+      try {
+        const raw = localStorage.getItem("sadia:pwa:dismissedAt");
+        const last = raw ? Number(raw) : 0;
+        const weekMs = 7 * 24 * 60 * 60 * 1000;
+        if (!last || Date.now() - last > weekMs) {
+          setShowPrompt(true);
+        }
+      } catch {}
+    }
+    function onAppInstalled() {
+      setInstalled(true);
+      setShowPrompt(false);
+      setDeferredPrompt(null);
+    }
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onAppInstalled);
+    // Check iOS Safari or already installed
+    const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator as any).standalone;
+    if (isStandalone) setInstalled(true);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+  const prompt = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      setShowPrompt(false);
+      setDeferredPrompt(null);
+      return outcome;
+    }
+  };
+  const dismiss = () => {
+    try { localStorage.setItem("sadia:pwa:dismissedAt", String(Date.now())); } catch {}
+    setShowPrompt(false);
+  };
+  return { showPrompt, setShowPrompt, prompt, installed, canPrompt: !!deferredPrompt, dismiss };
+}
 import { RxHamburgerMenu, RxPaperPlane, RxPlus, RxCross2 } from "react-icons/rx";
 import { IoMicOutline } from "react-icons/io5";
 import { Link } from "react-router-dom";
@@ -33,6 +84,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 }
 
 export default function Chat() {
+  const { showPrompt, setShowPrompt, prompt, installed, canPrompt, dismiss } = usePwaInstallPrompt();
   const [started, setStarted] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem("sadia:chat:started");
@@ -56,6 +108,7 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showScrollFab, setShowScrollFab] = useState(false);
+  const [confirmNewOpen, setConfirmNewOpen] = useState(false);
 
   const hasOnlyAssistant = useMemo(
     () => messages.every((m) => m.role === "assistant"),
@@ -188,12 +241,15 @@ export default function Chat() {
         timestamp: Date.now(),
       },
     ]);
+    if (canPrompt && !installed) {
+      setTimeout(() => setShowPrompt(true), 400);
+    }
   }
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
       {/* Top bar */}
-  <header className="sticky top-0 z-10 bg-white/70 backdrop-blur border-b border-gray-200">
+      <header className="sticky top-0 z-10 bg-white/70 backdrop-blur border-b border-gray-200">
         <div className="flex items-center justify-between px-4 py-3">
           <button
             aria-label="Menu"
@@ -202,12 +258,56 @@ export default function Chat() {
           >
             <RxHamburgerMenu size={20} />
           </button>
-          <div className="text-base brand-font">SADIA</div>
-          <button onClick={resetChat} aria-label="New chat" className="text-sm px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200">
+          <div className="flex items-center gap-2">
+            <img src={sadiaLogo} alt="SADIA logo" className="h-7 w-7 rounded-full bg-white border border-gray-200 object-contain" />
+            <span className="text-base brand-font">SADIA</span>
+            {!installed && (
+              <button
+                className={`ml-2 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${canPrompt ? 'border-gray-300 hover:bg-gray-100' : 'border-dashed border-gray-300 text-gray-500'}`}
+                onClick={() => setShowPrompt(true)}
+              >
+                Install app
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => {
+              const hasUserMessage = messages.some((m) => m.role === "user");
+              if (started && hasUserMessage) setConfirmNewOpen(true);
+              else resetChat();
+            }}
+            aria-label="New chat"
+            className="text-sm px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200"
+          >
             New
           </button>
         </div>
       </header>
+      {/* PWA Install Prompt Popup */}
+      {showPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-xs w-full text-center card-shadow fade-up">
+            <img src={sadiaLogo} alt="SADIA logo" className="mx-auto mb-3 h-12 w-12 rounded-full bg-white border border-gray-200 object-contain" />
+            <div className="font-semibold text-lg mb-1">Install SADIA</div>
+            <div className="text-gray-600 text-sm mb-4">Get the full app experience on your device. Install SADIA to your home screen.</div>
+            <div className="flex gap-2 justify-center">
+              <button
+                className="rounded-lg bg-black text-white px-4 py-2 hover:opacity-90"
+                onClick={prompt}
+              >Install</button>
+              <button
+                className="rounded-lg bg-gray-100 px-4 py-2 hover:bg-gray-200"
+                onClick={dismiss}
+              >Maybe later</button>
+            </div>
+            {!canPrompt && (
+              <div className="mt-3 text-xs text-gray-500">
+                Tip: On iOS Safari, use Share → Add to Home Screen. On desktop Chrome, use the install icon in the address bar.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
   {/* Sidebar Drawer */}
       <div
@@ -241,7 +341,9 @@ export default function Chat() {
           <div className="p-3">
             <button
               onClick={() => {
-                resetChat();
+                const hasUserMessage = messages.some((m) => m.role === "user");
+                if (started && hasUserMessage) setConfirmNewOpen(true);
+                else resetChat();
                 setDrawerOpen(false);
               }}
               className="w-full mb-3 flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"
@@ -395,6 +497,23 @@ export default function Chat() {
           ↓
         </button>
       )}
+
+      {/* Confirm New Chat Modal */}
+      <ConfirmModal
+        open={confirmNewOpen}
+        title="Start a new chat?"
+        description={
+          <>This will clear the current conversation from the screen. Your past chats are stored locally and won’t sync.</>
+        }
+        confirmText="Start new chat"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          setConfirmNewOpen(false);
+          resetChat();
+        }}
+        onCancel={() => setConfirmNewOpen(false)}
+      />
     </div>
   );
 }

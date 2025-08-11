@@ -1,14 +1,16 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoChevronBack } from "react-icons/io5";
+import ConfirmModal from "../components/ConfirmModal";
 
 export default function Settings() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<string | null>(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [confirmDelete1Open, setConfirmDelete1Open] = useState(false);
+  const [confirmDelete2Open, setConfirmDelete2Open] = useState(false);
 
   const clearChatHistory = useCallback(() => {
-    const ok = window.confirm("Clear all chat history? This cannot be undone.");
-    if (!ok) return;
     try {
       localStorage.setItem("sadia:chat:messages", JSON.stringify([]));
       localStorage.setItem("sadia:chat:started", "false");
@@ -16,14 +18,12 @@ export default function Settings() {
       navigate("/chat");
     } catch (e) {
       setStatus("Failed to clear chat history.");
+    } finally {
+      setConfirmClearOpen(false);
     }
   }, [navigate]);
 
   const deleteAccount = useCallback(() => {
-    const ok1 = window.confirm("Delete your account and all SADIA data on this device? This cannot be undone.");
-    if (!ok1) return;
-    const ok2 = window.confirm("Are you absolutely sure? This will remove all local data.");
-    if (!ok2) return;
     try {
       // Remove all keys prefixed by 'sadia:'
       const keys: string[] = [];
@@ -36,6 +36,8 @@ export default function Settings() {
       navigate("/home");
     } catch (e) {
       setStatus("Failed to delete account.");
+    } finally {
+      setConfirmDelete2Open(false);
     }
   }, [navigate]);
 
@@ -70,7 +72,7 @@ export default function Settings() {
                   <div className="text-sm font-medium">Clear chat history</div>
                   <div className="text-xs text-gray-500">Remove all your conversations from this device.</div>
                 </div>
-                <button onClick={clearChatHistory} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 hover-grow">
+                <button onClick={() => setConfirmClearOpen(true)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 hover-grow">
                   Clear
                 </button>
               </div>
@@ -82,12 +84,57 @@ export default function Settings() {
           <h2 className="mb-2 text-sm font-semibold text-gray-700">Danger zone</h2>
           <div className="rounded-2xl border border-red-200 bg-red-50 p-3 card-shadow">
             <div className="mb-2 text-sm">Permanently delete your account data on this device.</div>
-            <button onClick={deleteAccount} className="rounded-lg bg-red-600 text-white px-3 py-1.5 text-sm hover:opacity-90 hover-grow">
+            <button onClick={() => setConfirmDelete1Open(true)} className="rounded-lg bg-red-600 text-white px-3 py-1.5 text-sm hover:opacity-90 hover-grow">
               Delete account
             </button>
           </div>
         </section>
       </main>
+
+      {/* Modals */}
+      <ConfirmModal
+        open={confirmClearOpen}
+        title="Clear chat history?"
+        description={
+          <>
+            This will remove all your conversations from this device. This action cannot be undone.
+          </>
+        }
+        confirmText="Clear history"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={clearChatHistory}
+        onCancel={() => setConfirmClearOpen(false)}
+      />
+
+      <ConfirmModal
+        open={confirmDelete1Open}
+        title="Delete account on this device?"
+        description={
+          <>This will erase all SADIA data stored locally on this device. You will not be able to recover it.</>
+        }
+        confirmText="Continue"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={() => {
+          setConfirmDelete1Open(false);
+          setConfirmDelete2Open(true);
+        }}
+        onCancel={() => setConfirmDelete1Open(false)}
+      />
+
+      <ConfirmModal
+        open={confirmDelete2Open}
+        title="Are you absolutely sure?"
+        description={
+          <>This is permanent. All keys starting with 'sadia:' in local storage will be removed.</>
+        }
+        confirmText="Delete permanently"
+        cancelText="Back"
+        variant="danger"
+        onConfirm={deleteAccount}
+        onCancel={() => setConfirmDelete2Open(false)}
+      />
     </div>
   );
 }
