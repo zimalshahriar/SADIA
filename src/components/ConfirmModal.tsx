@@ -1,4 +1,5 @@
 import React from "react";
+import ReactDOM from "react-dom";
 
 type ConfirmModalProps = {
   open: boolean;
@@ -26,8 +27,8 @@ export default function ConfirmModal({
     variant === "danger"
       ? "bg-red-600 text-white hover:opacity-90"
       : "btn-primary";
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-5">
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 p-4 sm:p-5">
       <div
         role="dialog"
         aria-modal="true"
@@ -52,6 +53,7 @@ export default function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
