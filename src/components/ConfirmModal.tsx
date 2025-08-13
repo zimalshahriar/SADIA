@@ -27,11 +27,11 @@ export default function ConfirmModal({
       ? "bg-red-600 text-white hover:opacity-90"
       : "btn-primary";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 sm:p-5">
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-sm rounded-2xl border border-soft bg-card backdrop-blur p-5 card-shadow"
+        className="w-full max-w-sm rounded-2xl border border-soft bg-card backdrop-blur p-4 sm:p-5 card-shadow max-h-[80vh] overflow-auto"
       >
         <div className="mb-2 text-lg font-semibold">{title}</div>
         {description && (

@@ -285,8 +285,8 @@ export default function Chat() {
       </header>
       {/* PWA Install Prompt Popup */}
       {showPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-card rounded-2xl shadow-xl p-6 max-w-xs w-full text-center card-shadow fade-up border border-soft">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="bg-card rounded-2xl shadow-xl p-5 max-w-[20rem] w-full text-center card-shadow fade-up border border-soft max-h-[80vh] overflow-auto">
             <img src={sadiaLogo} alt="SADIA logo" className="mx-auto mb-3 h-12 w-12 rounded-full bg-card border border-soft object-contain" />
             <div className="font-semibold text-lg mb-1">Install SADIA</div>
             <div className="text-muted text-sm mb-4">Get the full app experience on your device. Install SADIA to your home screen.</div>

@@ -43,7 +43,7 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-app">
-      <header className="sticky top-0 bg-surface border-b border-soft px-4 py-3">
+      <header className="sticky top-0 z-30 bg-surface border-b border-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             aria-label="Back to chat"
@@ -56,7 +56,7 @@ export default function Settings() {
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 py-4 fade-up">
+      <main className="max-w-xl mx-auto px-4 pt-5 pb-4 fade-up">
         {status && (
           <div className="mb-4 rounded-lg border border-soft bg-card px-3 py-2 text-sm card-shadow">
             {status}
