@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IoChevronBack } from "react-icons/io5";
 import { db } from "../firebase/config";
+import ConfirmModal from "../components/ConfirmModal";
+import { useAuth } from "../auth/AuthProvider";
 import {
   addDoc,
   collection,
@@ -28,7 +29,6 @@ type Program = {
   createdAt?: any;
 };
 
-const ADMIN_PASSWORD = "sadia-admin-123"; // change in code when needed
 
 // Small helper to smoothly mount/unmount sections
 function FadeSection({ show, children }: { show: boolean; children: React.ReactNode }) {
@@ -58,10 +58,15 @@ function FadeSection({ show, children }: { show: boolean; children: React.ReactN
 
 export default function Admin() {
   const navigate = useNavigate();
-  const [authed, setAuthed] = useState(() => localStorage.getItem("sadia_admin_authed") === "true");
-  const [pw, setPw] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [tab, setTab] = useState<"add" | "view">("add");
+  const { signOutApp } = useAuth();
+  const TAB_KEY = "sadia:admin:tab";
+  const [tab, setTab] = useState<"add" | "view" | "users">(() => {
+    if (typeof window !== 'undefined') {
+      const t = localStorage.getItem(TAB_KEY);
+      if (t === 'add' || t === 'view' || t === 'users') return t;
+    }
+    return "add";
+  });
   const [status, setStatus] = useState<string | null>(null);
 
   // form state
@@ -77,14 +82,18 @@ export default function Admin() {
   const [items, setItems] = useState<Program[]>([]);
   const [filter, setFilter] = useState<{ level?: string; country?: string; q?: string }>({});
   const [countrySuggestions, setCountrySuggestions] = useState<string[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Edit modal state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState<Program | null>(null);
+  // Delete confirm state
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!authed) return;
     const qref = query(collection(db, "programs"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(qref, (snap) => {
       const rows: Program[] = [];
@@ -92,23 +101,37 @@ export default function Admin() {
       setItems(rows);
     });
     return () => unsub();
-  }, [authed]);
+  }, []);
 
-  function login(e: React.FormEvent) {
-    e.preventDefault();
-    if (pw === ADMIN_PASSWORD) {
-      setAuthed(true);
-      localStorage.setItem("sadia_admin_authed", "true"); // persist auth
-      setStatus(null);
-    } else {
-      setStatus("Wrong password");
-    }
+  async function logout() {
+    await signOutApp();
+    navigate("/home");
   }
 
-  // Add a logout function
-  function logout() {
-    setAuthed(false);
-    localStorage.removeItem("sadia_admin_authed");
+  function openEditModal(p: Program) {
+    // create a shallow copy to edit safely
+    setEditDraft({ ...p });
+    setEditOpen(true);
+  }
+
+  async function saveEditDraft() {
+    if (!editDraft || !editDraft.id) {
+      setEditOpen(false);
+      return;
+    }
+    const p = editDraft;
+  await updateDoc(doc(db, "programs", p.id!), {
+      courseName: p.courseName.trim(),
+      level: p.level,
+      university: p.university.trim(),
+      city: p.city.trim(),
+      country: p.country.trim(),
+      tuitionBDT: Number(p.tuitionBDT || 0),
+      about: p.about.trim(),
+    });
+    setEditOpen(false);
+    setBanner("Saved");
+    setTimeout(() => setBanner(null), 2000);
   }
 
   async function addProgram(e: React.FormEvent) {
@@ -163,19 +186,7 @@ export default function Admin() {
     await deleteDoc(doc(db, "programs", id));
   }
 
-  async function saveEdit(p: Program) {
-    if (!p.id) return;
-    await updateDoc(doc(db, "programs", p.id), {
-      courseName: p.courseName,
-      level: p.level,
-      university: p.university,
-      city: p.city,
-      country: p.country,
-      tuitionBDT: p.tuitionBDT,
-      about: p.about,
-    });
-    setEditingId(null);
-  }
+  
 
   // Collect unique country names for suggestions
   const allCountries = useMemo(() => {
@@ -221,6 +232,11 @@ export default function Admin() {
     }
   }, [tab]);
 
+  // Persist active tab across reloads
+  useEffect(() => {
+    try { localStorage.setItem(TAB_KEY, tab); } catch {}
+  }, [tab]);
+
   // Auto-clear highlight after a few seconds
   useEffect(() => {
     if (!lastAddedId) return;
@@ -228,66 +244,41 @@ export default function Admin() {
     return () => clearTimeout(t);
   }, [lastAddedId]);
 
-  if (!authed) {
-    return (
-      <div className="min-h-screen bg-app flex items-center justify-center px-4">
-        {/* Back to Home */}
-        <button
-          aria-label="Back to Home"
-          className="fixed top-4 left-4 p-2 rounded-lg hover:bg-gray-100"
-          onClick={() => navigate("/home")}
-        >
-          <IoChevronBack size={20} />
-        </button>
-        <form onSubmit={login} className="w-full max-w-sm rounded-2xl border border-soft bg-card backdrop-blur p-5 card-shadow">
-          <div className="mb-3">
-            <h1 className="text-lg font-semibold brand-font">SADIA Admin</h1>
-            <p className="text-xs text-muted mt-1">Enter the admin password to continue.</p>
-          </div>
-          {status && <div className="mb-2 text-sm text-red-600">{status}</div>}
-          <label className="text-xs text-muted">Password</label>
-          <div className="relative mt-1 mb-3">
-            <input
-              type={showPw ? "text" : "password"}
-              className="w-full rounded-lg border border-soft bg-card px-3 py-2 pr-16"
-              placeholder="Enter admin password"
-              value={pw}
-              onChange={(e) => setPw(e.target.value)}
-            />
-            <button
-              type="button"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-muted hover:bg-gray-100"
-              onClick={() => setShowPw((v) => !v)}
-            >
-              {showPw ? "Hide" : "Show"}
-            </button>
-          </div>
-          <button className="w-full rounded-lg btn-primary py-2">Enter</button>
-        </form>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-app">
       {/* Mobile/top header */}
       <header className="sticky top-0 z-30 w-full border-b border-soft bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-          <div className="text-base font-semibold brand-font">SADIA Admin</div>
-          {/* Mobile actions with animated segmented control */}
-          <div className="flex items-center gap-2 md:hidden">
-            <div className="relative inline-flex w-[220px] rounded-xl bg-card border border-soft p-1">
-              <span className={`absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-lg btn-primary transition-transform duration-200 ${tab === 'view' ? 'translate-x-full' : 'translate-x-0'}`} />
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="text-base font-semibold brand-font truncate">SADIA Admin</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/chat')}
+                className="rounded-md px-3 py-1.5 text-sm border border-soft bg-card hover:bg-gray-50"
+                aria-label="Go to Chat"
+              >Chat</button>
+              <button onClick={logout} className="rounded-md px-3 py-1.5 text-sm bg-red-50 text-red-600 md:hidden">Logout</button>
+            </div>
+          </div>
+          {/* Mobile segmented control below header for better fit */}
+          <div className="mt-2 md:hidden">
+            <div className="inline-flex rounded-xl bg-card border border-soft overflow-hidden">
               <button
                 onClick={() => setTab('add')}
-                className={`relative z-10 flex-1 px-3 py-1.5 text-sm transition-colors ${tab === 'add' ? 'text-white' : 'text-primary'}`}
+                className={`px-3 py-1.5 text-sm ${tab === 'add' ? 'btn-primary text-white' : 'hover:bg-gray-50'}`}
               >Add</button>
               <button
                 onClick={() => setTab('view')}
-                className={`relative z-10 flex-1 px-3 py-1.5 text-sm transition-colors ${tab === 'view' ? 'text-white' : 'text-primary'}`}
+                className={`px-3 py-1.5 text-sm ${tab === 'view' ? 'btn-primary text-white' : 'hover:bg-gray-50'}`}
               >View</button>
+              <button
+                onClick={() => setTab('users')}
+                className={`px-3 py-1.5 text-sm ${tab === 'users' ? 'btn-primary text-white' : 'hover:bg-gray-50'}`}
+              >Users</button>
             </div>
-            <button onClick={logout} className="ml-1 rounded-md px-3 py-1.5 text-sm bg-red-50 text-red-600">Logout</button>
           </div>
         </div>
         {/* Banner */}
@@ -307,6 +298,7 @@ export default function Admin() {
           <nav className="space-y-2 text-sm">
       <button onClick={() => setTab("add")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "add" ? "btn-primary text-white" : "hover:bg-gray-50 border border-soft bg-card"}`}>Add</button>
       <button onClick={() => setTab("view")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "view" ? "btn-primary text-white" : "hover:bg-gray-50 border border-soft bg-card"}`}>View</button>
+      <button onClick={() => setTab("users")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "users" ? "btn-primary text-white" : "hover:bg-gray-50 border border-soft bg-card"}`}>Users</button>
             <button onClick={logout} className="block rounded-lg px-3 py-2 hover:bg-gray-50 border border-soft bg-card text-red-600">Logout</button>
           </nav>
         </aside>
@@ -414,42 +406,17 @@ export default function Admin() {
                       key={p.id}
                       className={`border-t border-soft ${lastAddedId === p.id ? "bg-emerald-50/70" : ""}`}
                     >
-                      <td className="px-3 py-2">{editingId === p.id ? (
-                        <input className="w-full border border-soft bg-card rounded px-2 py-1" value={p.courseName} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, courseName: e.target.value } : it))} />
-                      ) : p.courseName}</td>
-                      <td className="px-3 py-2">{editingId === p.id ? (
-                        <select className="border border-soft bg-card rounded px-2 py-1" value={p.level} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, level: e.target.value as any } : it))}>
-                          <option value="Bachelors">Bachelor's</option>
-                          <option value="Masters">Master's</option>
-                        </select>
-                      ) : p.level}</td>
-                      <td className="px-3 py-2">{editingId === p.id ? (
-                        <input className="w-full border border-soft bg-card rounded px-2 py-1" value={p.university} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, university: e.target.value } : it))} />
-                      ) : p.university}</td>
-                      <td className="px-3 py-2">{editingId === p.id ? (
-                        <div className="flex gap-2">
-                          <input className="w-full border border-soft bg-card rounded px-2 py-1" placeholder="City" value={p.city} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, city: e.target.value } : it))} />
-                          <input className="w-full border border-soft bg-card rounded px-2 py-1" placeholder="Country" value={p.country} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, country: e.target.value } : it))} />
-                        </div>
-                      ) : `${p.city ? p.city + ", " : ""}${p.country}`}</td>
-                      <td className="px-3 py-2">{editingId === p.id ? (
-                        <input type="number" className="w-full border border-soft bg-card rounded px-2 py-1" value={p.tuitionBDT} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, tuitionBDT: Number(e.target.value) } : it))} />
-                      ) : p.tuitionBDT?.toLocaleString()}</td>
-                      <td className="px-3 py-2 max-w-[260px]">{editingId === p.id ? (
-                        <textarea className="w-full border border-soft bg-card rounded px-2 py-1" rows={2} value={p.about} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, about: e.target.value } : it))} />
-                      ) : <span className="line-clamp-2">{p.about}</span>}</td>
+                      <td className="px-3 py-2">{p.courseName}</td>
+                      <td className="px-3 py-2">{p.level}</td>
+                      <td className="px-3 py-2">{p.university}</td>
+                      <td className="px-3 py-2">{`${p.city ? p.city + ", " : ""}${p.country}`}</td>
+                      <td className="px-3 py-2">{p.tuitionBDT?.toLocaleString()}</td>
+                      <td className="px-3 py-2 max-w-[260px]"><span className="line-clamp-2">{p.about}</span></td>
                       <td className="px-3 py-2 text-right">
-                        {editingId === p.id ? (
-                          <div className="flex justify-end gap-2">
-                            <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => saveEdit(p)}>Save</button>
-                            <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setEditingId(null)}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div className="flex justify-end gap-2">
-                            <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setEditingId(p.id!)}>Edit</button>
-                            <button className="rounded border border-soft bg-card px-2 py-1 text-red-600" onClick={() => remove(p.id!)}>Delete</button>
-                          </div>
-                        )}
+                        <div className="flex justify-end gap-2">
+                          <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => openEditModal(p)}>Edit</button>
+                          <button className="rounded border border-soft bg-card px-2 py-1 text-red-600" onClick={() => setConfirmDeleteId(p.id!)}>Delete</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -466,64 +433,343 @@ export default function Admin() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="font-medium">{p.courseName}</div>
-                    {editingId !== p.id ? (
-                      <div className="flex gap-2">
-                        <button className="rounded border border-soft bg-card px-2 py-1 text-xs" onClick={() => setEditingId(p.id!)}>Edit</button>
-                        <button className="rounded border border-soft bg-card px-2 py-1 text-xs text-red-600" onClick={() => remove(p.id!)}>Delete</button>
-                      </div>
-                    ) : null}
+                    <div className="flex gap-2">
+                      <button className="rounded border border-soft bg-card px-2 py-1 text-xs" onClick={() => openEditModal(p)}>Edit</button>
+                      <button className="rounded border border-soft bg-card px-2 py-1 text-xs text-red-600" onClick={() => setConfirmDeleteId(p.id!)}>Delete</button>
+                    </div>
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Level</span>
-                      {editingId === p.id ? (
-                        <select className="border border-soft bg-card rounded px-2 py-1" value={p.level} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, level: e.target.value as any } : it))}>
-                          <option value="Bachelors">Bachelor's</option>
-                          <option value="Masters">Master's</option>
-                        </select>
-                      ) : <span>{p.level}</span>}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">University</span>
-                      {editingId === p.id ? (
-                        <input className="border border-soft bg-card rounded px-2 py-1 w-40 text-right" value={p.university} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, university: e.target.value } : it))} />
-                      ) : <span className="text-right">{p.university}</span>}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Location</span>
-                      {editingId === p.id ? (
-                        <div className="flex gap-2">
-                          <input className="border border-soft bg-card rounded px-2 py-1 w-24" placeholder="City" value={p.city} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, city: e.target.value } : it))} />
-                          <input className="border border-soft bg-card rounded px-2 py-1 w-28" placeholder="Country" value={p.country} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, country: e.target.value } : it))} />
-                        </div>
-                      ) : <span className="text-right">{`${p.city ? p.city + ', ' : ''}${p.country}`}</span>}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted">Tuition (BDT)</span>
-                      {editingId === p.id ? (
-                        <input type="number" className="border border-soft bg-card rounded px-2 py-1 w-28 text-right" value={p.tuitionBDT} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, tuitionBDT: Number(e.target.value) } : it))} />
-                      ) : <span className="text-right">{p.tuitionBDT?.toLocaleString()}</span>}
-                    </div>
+                    <div className="flex items-center justify-between"><span className="text-muted">Level</span><span>{p.level}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted">University</span><span className="text-right">{p.university}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted">Location</span><span className="text-right">{`${p.city ? p.city + ', ' : ''}${p.country}`}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted">Tuition (BDT)</span><span className="text-right">{p.tuitionBDT?.toLocaleString()}</span></div>
                     <div>
                       <div className="text-muted">About</div>
-                      {editingId === p.id ? (
-                        <textarea className="mt-1 w-full border border-soft bg-card rounded px-2 py-1" rows={3} value={p.about} onChange={(e) => setItems((arr) => arr.map((it) => it.id === p.id ? { ...it, about: e.target.value } : it))} />
-                      ) : <p className="mt-1">{p.about}</p>}
+                      <p className="mt-1">{p.about}</p>
                     </div>
                   </div>
-                  {editingId === p.id ? (
-                    <div className="mt-3 flex justify-end gap-2">
-                      <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => saveEdit(p)}>Save</button>
-                      <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setEditingId(null)}>Cancel</button>
-                    </div>
-                  ) : null}
                 </div>
               ))}
             </div>
           </div>
         </FadeSection>
+        
+        {/* Users management (admins/super only; route guard already enforced for access to page) */}
+        <FadeSection show={tab === "users"}>
+          <UsersSection />
+        </FadeSection>
         </main>
       </div>
+
+      {/* Edit Modal */}
+      {editOpen && editDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-soft bg-card p-4 sm:p-5 card-shadow max-h-[85vh] overflow-auto">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-lg font-semibold">Edit program</div>
+              <button
+                className="rounded-md px-2 py-1 border border-soft bg-card hover:bg-gray-50"
+                onClick={() => setEditOpen(false)}
+              >Close</button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs text-muted">Course name</label>
+                <input className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={editDraft.courseName} onChange={(e) => setEditDraft({ ...editDraft, courseName: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted">Level</label>
+                <select className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={editDraft.level} onChange={(e) => setEditDraft({ ...editDraft, level: e.target.value as any })}>
+                  <option value="Bachelors">Bachelor's</option>
+                  <option value="Masters">Master's</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted">University</label>
+                <input className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={editDraft.university} onChange={(e) => setEditDraft({ ...editDraft, university: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted">City</label>
+                <input className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={editDraft.city} onChange={(e) => setEditDraft({ ...editDraft, city: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted">Country</label>
+                <input className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={editDraft.country} onChange={(e) => setEditDraft({ ...editDraft, country: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs text-muted">Tuition fees (BDT)</label>
+                <input type="number" min={0} className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={String(editDraft.tuitionBDT ?? '')} onChange={(e) => setEditDraft({ ...editDraft, tuitionBDT: Number(e.target.value || 0) })} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-muted">About</label>
+              <textarea className="w-full rounded-lg border border-soft bg-card px-3 py-2" rows={4} value={editDraft.about} onChange={(e) => setEditDraft({ ...editDraft, about: e.target.value })} />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded-lg border border-soft bg-card px-3 py-1.5 text-sm hover:bg-gray-50" onClick={() => setEditOpen(false)}>Cancel</button>
+              <button className="rounded-lg btn-primary px-3 py-1.5 text-sm" onClick={saveEditDraft}>Save changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      <ConfirmModal
+        open={!!confirmDeleteId}
+        title="Delete program?"
+        description={
+          (() => {
+            const item = items.find(it => it.id === confirmDeleteId);
+            return (
+              <>
+                This will permanently delete{" "}
+                <strong>
+                  {item?.courseName ? `“${item.courseName}”` : "this program"}
+                </strong>
+                {item?.university ? (
+                  <>
+                    {" "}at <strong>{item.university}</strong>
+                  </>
+                ) : null}
+                . This action cannot be undone.
+              </>
+            );
+          })()
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={async () => {
+          if (confirmDeleteId) {
+            await remove(confirmDeleteId);
+            setBanner("Deleted");
+            setTimeout(() => setBanner(null), 2000);
+          }
+          setConfirmDeleteId(null);
+        }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
+    </div>
+  );
+}
+
+// Minimal UsersSection placeholder; will be implemented fully in next step
+type UserRow = {
+  uid: string;
+  email: string | null;
+  name: string | null;
+  photoURL: string | null;
+  role: 'user' | 'admin';
+  suspended: boolean;
+  createdAt?: any;
+  lastLoginAt?: any;
+  deletedAt?: any | null;
+};
+
+function UsersSection() {
+  const { role: currentRole } = useAuth();
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [q, setQ] = useState('');
+  const [banner, setBanner] = useState<string | null>(null);
+  type ActionType = 'promote' | 'demote' | 'suspend' | 'unsuspend' | 'remove';
+  const [confirm, setConfirm] = useState<{ type: ActionType; user: UserRow } | null>(null);
+
+  useEffect(() => {
+    const qref = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(qref, (snap) => {
+      const arr: UserRow[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as UserRow;
+        if ((data as any).deletedAt) return; // hide soft-deleted
+        arr.push({ ...data, uid: d.id });
+      });
+      setUsers(arr);
+    });
+    return () => unsub();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter((u) =>
+      (u.email || '').toLowerCase().includes(term) ||
+      (u.name || '').toLowerCase().includes(term)
+    );
+  }, [users, q]);
+
+  const SUPER_EMAIL = 'alshahriarzim@gmail.com';
+
+  const canChangeRole = (u: UserRow) => currentRole === 'super' && u.email !== SUPER_EMAIL;
+  const canSuspend = (u: UserRow) =>
+    u.email !== SUPER_EMAIL && ((currentRole === 'super') || (currentRole === 'admin' && u.role === 'user'));
+  const canRemove = (u: UserRow) => u.email !== SUPER_EMAIL && canSuspend(u); // same constraints
+
+  async function setRole(u: UserRow, role: 'user' | 'admin') {
+    await updateDoc(doc(db, 'users', u.uid), { role });
+    setBanner(`Updated role: ${u.email || u.uid} → ${role}`);
+    setTimeout(() => setBanner(null), 2000);
+  }
+
+  async function toggleSuspend(u: UserRow) {
+    await updateDoc(doc(db, 'users', u.uid), { suspended: !u.suspended });
+    setBanner(`${!u.suspended ? 'Suspended' : 'Unsuspended'} ${u.email || u.uid}`);
+    setTimeout(() => setBanner(null), 2000);
+  }
+
+  async function removeUser(u: UserRow) {
+    await updateDoc(doc(db, 'users', u.uid), { deletedAt: serverTimestamp(), suspended: true });
+    setBanner(`Removed ${u.email || u.uid}`);
+    setTimeout(() => setBanner(null), 2000);
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {banner && (
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 text-sm">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+          {banner}
+        </div>
+      )}
+      <div className="mb-3 flex items-center gap-2">
+        <input
+          placeholder="Search by name or email"
+          className="rounded-lg border border-soft bg-card px-3 py-2 w-full"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-soft bg-card">
+        <table className="min-w-full text-sm">
+          <thead className="bg-surface text-muted">
+            <tr>
+              <th className="px-3 py-2 text-left">User</th>
+              <th className="px-3 py-2 text-left">Email</th>
+              <th className="px-3 py-2 text-left">Role</th>
+              <th className="px-3 py-2 text-left">Status</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((u) => (
+              <tr key={u.uid} className="border-t border-soft">
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {u.photoURL ? <img src={u.photoURL} className="h-6 w-6 rounded-full border border-soft" /> : <div className="h-6 w-6 rounded-full bg-gray-200 border border-soft" />}
+                    <span className="truncate max-w-[200px]">{u.name || '—'}</span>
+                  </div>
+                </td>
+                <td className="px-3 py-2">
+                  <span className="truncate inline-block max-w-[240px] align-middle">{u.email || '—'}</span>
+                </td>
+                <td className="px-3 py-2">{u.email === SUPER_EMAIL ? 'super' : u.role}</td>
+                <td className="px-3 py-2">{u.suspended ? 'suspended' : 'active'}</td>
+                <td className="px-3 py-2">
+                  <div className="flex justify-end gap-2">
+                    {canChangeRole(u) && (
+                      u.role === 'user' ? (
+                        <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setConfirm({ type: 'promote', user: u })}>Make admin</button>
+                      ) : (
+                        <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setConfirm({ type: 'demote', user: u })}>Remove admin</button>
+                      )
+                    )}
+                    {canSuspend(u) && (
+                      <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setConfirm({ type: u.suspended ? 'unsuspend' : 'suspend', user: u })}>{u.suspended ? 'Unsuspend' : 'Suspend'}</button>
+                    )}
+                    {canRemove(u) && (
+                      <button className="rounded border border-soft bg-card px-2 py-1 text-red-600" onClick={() => setConfirm({ type: 'remove', user: u })}>Remove</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="md:hidden space-y-3">
+        {filtered.map((u) => (
+          <div key={u.uid} className="rounded-xl border border-soft bg-card p-3 card-shadow">
+            <div className="flex items-center gap-2">
+              {u.photoURL ? <img src={u.photoURL} className="h-7 w-7 rounded-full border border-soft" /> : <div className="h-7 w-7 rounded-full bg-gray-200 border border-soft" />}
+              <div className="min-w-0">
+                <div className="font-medium truncate">{u.name || '—'}</div>
+                <div className="text-xs text-muted truncate max-w-[260px]">{u.email || '—'}</div>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-muted">Role: {u.email === SUPER_EMAIL ? 'super' : u.role} • {u.suspended ? 'suspended' : 'active'}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {canChangeRole(u) && (
+                u.role === 'user' ? (
+                  <button className="rounded border border-soft bg-card px-2 py-1 text-xs" onClick={() => setConfirm({ type: 'promote', user: u })}>Make admin</button>
+                ) : (
+                  <button className="rounded border border-soft bg-card px-2 py-1 text-xs" onClick={() => setConfirm({ type: 'demote', user: u })}>Remove admin</button>
+                )
+              )}
+              {canSuspend(u) && (
+                <button className="rounded border border-soft bg-card px-2 py-1 text-xs" onClick={() => setConfirm({ type: u.suspended ? 'unsuspend' : 'suspend', user: u })}>{u.suspended ? 'Unsuspend' : 'Suspend'}</button>
+              )}
+              {canRemove(u) && (
+                <button className="rounded border border-soft bg-card px-2 py-1 text-xs text-red-600" onClick={() => setConfirm({ type: 'remove', user: u })}>Remove</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Confirm actions modal */}
+      <ConfirmModal
+        open={!!confirm}
+        title={
+          confirm?.type === 'promote' ? 'Make admin?' :
+          confirm?.type === 'demote' ? 'Remove admin role?' :
+          confirm?.type === 'suspend' ? 'Suspend user?' :
+          confirm?.type === 'unsuspend' ? 'Unsuspend user?' :
+          'Remove user?'
+        }
+        description={(() => {
+          if (!confirm) return null;
+          const email = confirm.user.email || confirm.user.uid;
+          if (confirm.type === 'promote') {
+            return <>Grant admin privileges to <strong>{email}</strong>? Admins can manage programs and users.</>;
+          }
+          if (confirm.type === 'demote') {
+            return <>Remove admin privileges from <strong>{email}</strong>? They will become a normal user.</>;
+          }
+          if (confirm.type === 'suspend') {
+            return <>Suspend <strong>{email}</strong>? Suspended users cannot sign in until unsuspended.</>;
+          }
+          if (confirm.type === 'unsuspend') {
+            return <>Unsuspend <strong>{email}</strong>? They will regain access.</>;
+          }
+          // remove
+          return <>This will soft-delete <strong>{email}</strong>. Their record will be hidden and marked as removed.</>;
+        })()}
+        confirmText={
+          confirm?.type === 'promote' ? 'Make admin' :
+          confirm?.type === 'demote' ? 'Remove admin' :
+          confirm?.type === 'suspend' ? 'Suspend' :
+          confirm?.type === 'unsuspend' ? 'Unsuspend' :
+          'Remove'
+        }
+        cancelText="Cancel"
+        variant={confirm?.type === 'remove' || confirm?.type === 'suspend' ? 'danger' : 'default'}
+        onConfirm={async () => {
+          if (!confirm) return;
+          const u = confirm.user;
+          try {
+            if (confirm.type === 'promote') await setRole(u, 'admin');
+            else if (confirm.type === 'demote') await setRole(u, 'user');
+            else if (confirm.type === 'remove') await removeUser(u);
+            else await toggleSuspend(u);
+          } finally {
+            setConfirm(null);
+          }
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

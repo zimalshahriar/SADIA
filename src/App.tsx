@@ -1,19 +1,41 @@
 // App.tsx
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import { RequireAdmin, RequireAuth, RedirectByRole } from "./auth/RouteGuards";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/home" replace />} />
-  <Route path="/home" element={<Home />} />
-  <Route path="/chat" element={<Chat />} />
-  <Route path="/settings" element={<Settings />} />
-  <Route path="/admin" element={<Admin />} />
+        <Route path="/" element={<RedirectByRole />} />
+        <Route path="/home" element={<Home />} />
+        <Route
+          path="/chat"
+          element={
+            <RequireAuth>
+              <Chat />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <Settings />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <Admin />
+            </RequireAdmin>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

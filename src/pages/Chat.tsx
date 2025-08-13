@@ -53,6 +53,7 @@ function usePwaInstallPrompt() {
 import { RxHamburgerMenu, RxPaperPlane, RxPlus, RxCross2 } from "react-icons/rx";
 import { IoMicOutline } from "react-icons/io5";
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/AuthProvider";
 
 type Role = "assistant" | "user";
 type Message = {
@@ -84,6 +85,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 }
 
 export default function Chat() {
+  const { signOutApp, role } = useAuth();
   const { showPrompt, setShowPrompt, prompt, installed, canPrompt, dismiss } = usePwaInstallPrompt();
   const [started, setStarted] = useState<boolean>(() => {
     try {
@@ -359,13 +361,21 @@ export default function Chat() {
               >
                 Settings
               </Link>
-              <Link
-                to="/home"
-                onClick={() => setDrawerOpen(false)}
-                className="block rounded-lg px-3 py-2 hover:bg-gray-50 text-red-600"
+              {(role === 'admin' || role === 'super') && (
+                <Link
+                  to="/admin"
+                  onClick={() => setDrawerOpen(false)}
+                  className="block rounded-lg px-3 py-2 hover:bg-gray-50"
+                >
+                  Admin panel
+                </Link>
+              )}
+              <button
+                onClick={async () => { await signOutApp(); setDrawerOpen(false); }}
+                className="block w-full text-left rounded-lg px-3 py-2 hover:bg-gray-50 text-red-600"
               >
                 Logout
-              </Link>
+              </button>
             </nav>
 
             {/* Placeholder for conversation list */}

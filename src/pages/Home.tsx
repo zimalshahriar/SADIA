@@ -1,13 +1,23 @@
 import { useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
+import { useAuth } from "../auth/AuthProvider";
+import { useEffect } from "react";
 
 export default function Home() {
   const navigate = useNavigate();
+  const { signInWithGoogle } = useAuth();
+  const { user, role } = useAuth();
 
-  const handleGoogleClick = () => {
-    // Later this will be replaced with real Google Auth
-    navigate("/chat");
+  const handleGoogleClick = async () => {
+    await signInWithGoogle();
+  // Redirect handled by root route based on role
   };
+
+  useEffect(() => {
+    if (!user) return;
+    if (role === "admin" || role === "super") navigate("/admin", { replace: true });
+    else navigate("/chat", { replace: true });
+  }, [user, role, navigate]);
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-app">
