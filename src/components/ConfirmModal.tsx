@@ -10,6 +10,8 @@ type ConfirmModalProps = {
   variant?: "default" | "danger";
   onConfirm: () => void;
   onCancel: () => void;
+  showConfirm?: boolean;
+  showCancel?: boolean;
 };
 
 export default function ConfirmModal({
@@ -21,6 +23,8 @@ export default function ConfirmModal({
   variant = "default",
   onConfirm,
   onCancel,
+  showConfirm = true,
+  showCancel = true,
 }: ConfirmModalProps) {
   if (!open) return null;
   const confirmClass =
@@ -39,18 +43,22 @@ export default function ConfirmModal({
           <div className="mb-4 text-sm text-muted">{description}</div>
         )}
         <div className="flex justify-end gap-2">
-          <button
-            className="rounded-lg border border-soft bg-card px-3 py-1.5 text-sm hover:bg-gray-100"
-            onClick={onCancel}
-          >
-            {cancelText}
-          </button>
-          <button
-            className={`rounded-lg px-3 py-1.5 text-sm ${confirmClass}`}
-            onClick={onConfirm}
-          >
-            {confirmText}
-          </button>
+          {showCancel && (
+            <button
+              className="rounded-lg border border-soft bg-card px-3 py-1.5 text-sm hover:bg-gray-100"
+              onClick={onCancel}
+            >
+              {cancelText}
+            </button>
+          )}
+          {showConfirm && (
+            <button
+              className={`rounded-lg px-3 py-1.5 text-sm ${confirmClass}`}
+              onClick={onConfirm}
+            >
+              {confirmText}
+            </button>
+          )}
         </div>
       </div>
     </div>,

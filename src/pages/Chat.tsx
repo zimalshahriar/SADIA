@@ -54,6 +54,7 @@ import { RxHamburgerMenu, RxPaperPlane, RxPlus, RxCross2 } from "react-icons/rx"
 import { IoMicOutline } from "react-icons/io5";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
+import { askSadia, analyzeImage } from "../ai/assistant";
 
 type Role = "assistant" | "user";
 type Message = {
@@ -61,7 +62,38 @@ type Message = {
   role: Role;
   content: string;
   timestamp: number;
+  imageDataUrl?: string; // optional inline image for this message
 };
+
+// Normalize assistant text: strip heavy markdown, keep bullets and links readable
+function formatAssistantText(raw: string) {
+  let t = raw.replace(/\r\n/g, "\n");
+  // Strip fenced code blocks markers (keep content)
+  t = t.replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ""));
+  // Convert heading lines to plain
+  t = t.replace(/^\s*#{1,6}\s+/gm, "");
+  // Convert markdown links [text](url) -> text (url)
+  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
+  // Line-wise bullet/number normalization
+  t = t
+    .split("\n")
+    .map((line) => {
+      const m1 = line.match(/^\s*[*-]\s+(.+)$/);
+      if (m1) return `• ${m1[1]}`;
+      const m2 = line.match(/^\s*\d+[.)]\s+(.+)$/);
+      if (m2) return `• ${m2[1]}`;
+      return line;
+    })
+    .join("\n");
+  // Remove bold/italic markers
+  t = t.replace(/\*\*(.*?)\*\*/g, "$1");
+  t = t.replace(/__(.*?)__/g, "$1");
+  t = t.replace(/(?<!^)\*(.*?)\*/g, "$1");
+  t = t.replace(/_(.*?)_/g, "$1");
+  // Collapse excessive blank lines
+  t = t.replace(/\n{3,}/g, "\n\n");
+  return t.trim();
+}
 
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
@@ -77,7 +109,14 @@ function MessageBubble({ msg }: { msg: Message }) {
           isUser ? "bubble-user rounded-br-sm" : "bubble-assistant rounded-bl-sm"
         }`}
       >
-        {msg.content}
+        {msg.imageDataUrl && (
+          <img
+            src={msg.imageDataUrl}
+            alt="shared"
+            className="mb-2 max-h-56 w-auto rounded-lg border border-soft object-contain"
+          />
+        )}
+        {msg.content && <>{msg.content}</>}
       </div>
       {isUser && <div className="ml-2" />}
     </div>
@@ -111,6 +150,19 @@ export default function Chat() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showScrollFab, setShowScrollFab] = useState(false);
   const [confirmNewOpen, setConfirmNewOpen] = useState(false);
+  const [micModal, setMicModal] = useState<{ open: boolean; title: string; message?: string }>(() => ({ open: false, title: "" }));
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const chatTitle = useMemo(() => {
+    const firstUser = messages.find((m) => m.role === 'user');
+    if (!firstUser) return "New chat";
+    if (firstUser.imageDataUrl && !firstUser.content) return "Photo analysis";
+    const line = (firstUser.content || "").split("\n")[0].trim();
+    if (!line) return "New chat";
+    return line.length > 50 ? line.slice(0, 50) + "…" : line;
+  }, [messages]);
 
   const hasOnlyAssistant = useMemo(
     () => messages.every((m) => m.role === "assistant"),
@@ -166,7 +218,7 @@ export default function Chat() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  function send(text?: string) {
+  async function send(text?: string) {
     const content = (text ?? input).trim();
     if (!content) return;
     const userMsg: Message = {
@@ -178,7 +230,7 @@ export default function Chat() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
-    // Fake assistant response
+    // Show thinking bubble
     const thinkingId = crypto.randomUUID();
     const thinking: Message = {
       id: thinkingId,
@@ -187,19 +239,22 @@ export default function Chat() {
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, thinking]);
-    setTimeout(() => {
+  // formatAssistantText is defined at module scope
+    try {
+      const answer = await askSadia(content);
+      const formatted = formatAssistantText(answer);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === thinkingId ? { ...m, content: formatted } : m))
+      );
+    } catch (e) {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === thinkingId
-            ? {
-                ...m,
-                content:
-                  "Here’s a placeholder reply from SADIA. Connect your backend to generate real answers.",
-              }
+            ? { ...m, content: "Sorry, I couldn't process that right now. Please try again." }
             : m
         )
       );
-    }, 600);
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -212,10 +267,10 @@ export default function Chat() {
   // no-op
 
   const suggestions = [
-    "Brainstorm app ideas",
-    "Summarize a PDF",
-    "Write a friendly email",
-    "Explain a concept simply",
+    "Low cost Bachelor's programs for Bangladeshi students",
+    "Affordable Master's in Computer Science for Bangladeshi students",
+    "Study abroad options in Canada for Bangladeshi students",
+    "List budget-friendly programs in Europe for Bangladeshi students",
   ];
 
   function resetChat() {
@@ -239,7 +294,7 @@ export default function Chat() {
         id: crypto.randomUUID(),
         role: "assistant",
         content:
-          "Hi, I’m SADIA. How can I help today? You can ask me to brainstorm, draft, summarize, or answer questions.",
+          "Hi, I’m SADIA. I help Bangladeshi students with study abroad. Ask me about programs, costs, countries, or levels (Bachelor’s/Master’s).",
         timestamp: Date.now(),
       },
     ]);
@@ -378,10 +433,20 @@ export default function Chat() {
               </button>
             </nav>
 
-            {/* Placeholder for conversation list */}
+            {/* Recent conversations (ChatGPT-style: show current chat title) */}
             <div className="mt-4 border-t border-soft pt-3">
               <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Recent</div>
-              <div className="text-muted text-sm">No conversations yet</div>
+              {messages.length === 0 ? (
+                <div className="text-muted text-sm">No conversations yet</div>
+              ) : (
+                <button
+                  className="w-full text-left text-sm rounded-lg px-3 py-2 hover:bg-gray-50 border border-soft bg-white truncate"
+                  onClick={() => setDrawerOpen(false)}
+                  title={chatTitle}
+                >
+                  {chatTitle}
+                </button>
+              )}
             </div>
           </div>
         </aside>
@@ -454,10 +519,21 @@ export default function Chat() {
               <div className="pointer-events-none absolute -top-4 left-0 right-0 h-4 bg-gradient-to-t from-transparent to-white" />
             </div>
             <div className="flex items-end gap-2 fade-up">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  if (f) setImageFile(f);
+                }}
+              />
               <button
-                aria-label="Add"
+                aria-label="Add photo"
                 className="shrink-0 p-2 rounded-xl hover:bg-gray-100 hover-grow"
-                onClick={() => send("Create a to-do list for this week")}
+                onClick={() => fileInputRef.current?.click()}
+                title="Add photo"
               >
                 <RxPlus size={20} />
               </button>
@@ -475,21 +551,94 @@ export default function Chat() {
         {input.trim().length === 0 ? (
                 <button
                   aria-label="Voice input"
-          className="shrink-0 p-2 rounded-xl btn-primary hover:opacity-90 hover-grow card-shadow"
-                  onClick={() => alert("Microphone not implemented")}
+                  className={`shrink-0 p-2 rounded-xl ${listening ? 'bg-green-600 text-white' : 'btn-primary'} hover:opacity-90 hover-grow card-shadow`}
+                  onClick={() => {
+                    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                    if (!SR) {
+                      setMicModal({ open: true, title: 'Voice not available', message: 'Your browser does not support voice input here. Try mobile Chrome or Safari.' });
+                      return;
+                    }
+                    if (!recognitionRef.current) {
+                      const r = new SR();
+                      r.lang = 'en-US';
+                      r.interimResults = true;
+                      r.continuous = true;
+                      r.onresult = (ev: any) => {
+                        let txt = '';
+                        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                          txt += ev.results[i][0].transcript;
+                        }
+                        setInput((prev) => (prev ? prev + ' ' : '') + txt.trim());
+                      };
+                      r.onerror = () => {
+                        setListening(false);
+                        setMicModal({ open: true, title: 'Microphone error', message: 'Permission denied or microphone not available.' });
+                      };
+                      r.onend = () => setListening(false);
+                      recognitionRef.current = r;
+                    }
+                    if (!listening) {
+                      try { recognitionRef.current.start(); setListening(true); } catch {}
+                    } else {
+                      try { recognitionRef.current.stop(); } catch {} setListening(false);
+                    }
+                  }}
                 >
                   <IoMicOutline size={18} />
                 </button>
               ) : (
                 <button
                   aria-label="Send"
-          className="shrink-0 p-2 rounded-xl btn-primary hover:opacity-90 hover-grow card-shadow"
+                  className="shrink-0 p-2 rounded-xl btn-primary hover:opacity-90 hover-grow card-shadow"
                   onClick={() => send()}
                 >
                   <RxPaperPlane size={18} />
                 </button>
               )}
             </div>
+          {imageFile && (
+            <div className="mt-2 flex items-center gap-2">
+              <img
+                src={URL.createObjectURL(imageFile)}
+                alt="Selected"
+                className="h-14 w-14 object-cover rounded-lg border border-soft"
+              />
+              <button
+                className="px-3 py-1 text-sm rounded-lg border border-soft hover:bg-gray-50"
+                onClick={async () => {
+                  if (!imageFile) return;
+                  // Convert to data URL for persistent rendering in the chat
+                  const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const fr = new FileReader();
+                    fr.onload = () => resolve(String(fr.result));
+                    fr.onerror = () => reject(new Error('read failed'));
+                    fr.readAsDataURL(imageFile);
+                  });
+                  const thinkingId = crypto.randomUUID();
+                  const caption = input.trim();
+                  setMessages((prev) => [
+                    ...prev,
+                    { id: crypto.randomUUID(), role: 'user', content: caption, imageDataUrl: dataUrl, timestamp: Date.now() },
+                    { id: thinkingId, role: 'assistant', content: '…', timestamp: Date.now() },
+                  ]);
+                  setInput("");
+                  try {
+                    const ans = await analyzeImage(imageFile, caption || undefined);
+                    const formatted = formatAssistantText(ans);
+                    setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: formatted } : m));
+                  } catch (e) {
+                    setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: "Sorry, I couldn't analyze that image right now." } : m));
+                  } finally {
+                    setImageFile(null);
+                  }
+                }}
+              >Analyze photo</button>
+              <button
+                className="px-2 py-1 text-sm rounded-lg border border-soft hover:bg-gray-50"
+                onClick={() => setImageFile(null)}
+              >Remove</button>
+            </div>
+          )}
             <div className="mt-2 text-[11px] text-gray-500 text-center">
               SADIA can make mistakes. Check important info.
             </div>
@@ -509,6 +658,16 @@ export default function Chat() {
       )}
 
       {/* Confirm New Chat Modal */}
+      <ConfirmModal
+        open={micModal.open}
+        title={micModal.title}
+        description={micModal.message}
+        showConfirm={false}
+        showCancel={true}
+        cancelText="Close"
+        onConfirm={() => setMicModal({ open: false, title: '' })}
+        onCancel={() => setMicModal({ open: false, title: '' })}
+      />
       <ConfirmModal
         open={confirmNewOpen}
         title="Start a new chat?"
