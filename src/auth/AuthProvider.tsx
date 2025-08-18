@@ -15,6 +15,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
+import { onSnapshot } from "firebase/firestore";
 
 export type AppRole = "user" | "admin" | "super";
 
@@ -38,6 +39,7 @@ type AuthContextShape = {
   profile: AppUserProfile | null;
   role: AppRole;
   suspended: boolean;
+  maintenance: boolean;
   signInWithGoogle: () => Promise<void>;
   signOutApp: () => Promise<void>;
 };
@@ -48,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<import("firebase/auth").User | null>(null);
   const [profile, setProfile] = useState<AppUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [maintenance, setMaintenance] = useState<boolean>(false); // programs/app_config single source
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -118,6 +121,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsub();
   }, []);
 
+  // Maintenance subscription (single source): programs/app_config
+  useEffect(() => {
+    try {
+      const ref = doc(db, "programs", "app_config");
+      const unsub = onSnapshot(
+        ref,
+        (snap) => {
+          if (!snap.exists()) { setMaintenance(false); return; }
+          const data = snap.data() as any | undefined;
+          setMaintenance(!!data?.maintenance);
+        },
+        () => {
+          setMaintenance(false);
+        }
+      );
+      return () => unsub();
+    } catch {
+      setMaintenance(false);
+    }
+  }, []);
+
   const role: AppRole = useMemo(() => {
     if (user?.email === SUPER_EMAIL) return "super";
     if (profile?.role === "admin") return "admin";
@@ -150,7 +174,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     profile,
     role,
-    suspended,
+  suspended,
+  maintenance,
     signInWithGoogle,
     signOutApp,
   };

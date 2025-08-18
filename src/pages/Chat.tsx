@@ -124,7 +124,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 }
 
 export default function Chat() {
-  const { signOutApp, role } = useAuth();
+  const { signOutApp, role, maintenance } = useAuth();
   const { showPrompt, setShowPrompt, prompt, installed, canPrompt, dismiss } = usePwaInstallPrompt();
   const [started, setStarted] = useState<boolean>(() => {
     try {
@@ -507,8 +507,8 @@ export default function Chat() {
         </div>
       </main>
 
-      {/* Composer */}
-      {started && (
+  {/* Composer (hidden for admins during maintenance; supers always allowed; users already blocked by route guard) */}
+  {started && !(maintenance && role === 'admin') && (
         <div
           className="fixed bottom-0 left-0 right-0 z-20 border-t border-gray-200 bg-white/80 backdrop-blur"
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px))" }}
@@ -643,6 +643,12 @@ export default function Chat() {
               SADIA can make mistakes. Check important info.
             </div>
           </div>
+        </div>
+      )}
+  {maintenance && role === 'admin' && (
+        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-center text-sm">
+          Maintenance mode is on.
+          <Link to="/admin" className="ml-2 underline font-medium">Go to Admin</Link>
         </div>
       )}
 

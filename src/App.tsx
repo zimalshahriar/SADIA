@@ -4,7 +4,7 @@ import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
-import { RequireAdmin, RequireAuth, RedirectByRole } from "./auth/RouteGuards";
+import { RequireAdmin, RequireAuth, RedirectByRole, RequireAppAccess } from "./auth/RouteGuards";
 
 export default function App() {
   return (
@@ -16,7 +16,9 @@ export default function App() {
           path="/chat"
           element={
             <RequireAuth>
-              <Chat />
+              <RequireAppAccess allowAdmin>
+                <Chat />
+              </RequireAppAccess>
             </RequireAuth>
           }
         />
@@ -24,7 +26,9 @@ export default function App() {
           path="/settings"
           element={
             <RequireAuth>
-              <Settings />
+              <RequireAppAccess>
+                <Settings />
+              </RequireAppAccess>
             </RequireAuth>
           }
         />

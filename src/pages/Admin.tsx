@@ -8,7 +8,9 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
+  setDoc,
   onSnapshot,
   orderBy,
   query,
@@ -59,6 +61,8 @@ function FadeSection({ show, children }: { show: boolean; children: React.ReactN
 export default function Admin() {
   const navigate = useNavigate();
   const { signOutApp } = useAuth();
+  const { role, maintenance } = useAuth();
+  const [maintSaving, setMaintSaving] = useState(false);
   const TAB_KEY = "sadia:admin:tab";
   const [tab, setTab] = useState<"add" | "view" | "users">(() => {
     if (typeof window !== 'undefined') {
@@ -86,6 +90,21 @@ export default function Admin() {
   const [banner, setBanner] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [saving, setSaving] = useState(false);
+  // Ensure maintenance config doc exists for super-admins
+  useEffect(() => {
+    (async () => {
+      if (role !== 'super') return;
+      try {
+        const ref = doc(db, 'programs', 'app_config');
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          await setDoc(ref, { maintenance: false, createdAt: serverTimestamp() }, { merge: true });
+        }
+      } catch (e) {
+        // ignore; toggle will try again
+      }
+    })();
+  }, [role]);
 
   // Edit modal state
   const [editOpen, setEditOpen] = useState(false);
@@ -255,6 +274,35 @@ export default function Admin() {
               <div className="text-base font-semibold brand-font truncate">SADIA Admin</div>
             </div>
             <div className="flex items-center gap-2">
+            {maintenance && role !== 'super' && (
+              <span className="rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-xs px-2 py-1">
+                Maintenance ON
+              </span>
+            )}
+  {role === 'super' && (
+        <button
+                  onClick={async () => {
+                    try {
+                      setMaintSaving(true);
+          const ref = doc(db, 'programs', 'app_config');
+          await setDoc(ref, { maintenance: !maintenance, updatedAt: serverTimestamp() }, { merge: true });
+                      setBanner(!maintenance ? 'Maintenance enabled' : 'Maintenance disabled');
+                      setTimeout(() => setBanner(null), 2000);
+                    } catch (e) {
+          console.error('Maintenance toggle failed:', e);
+          setBanner('Failed to update maintenance flag (permissions)');
+                      setTimeout(() => setBanner(null), 2500);
+                    } finally {
+                      setMaintSaving(false);
+                    }
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-sm border ${maintenance ? 'border-amber-400 text-amber-700 bg-amber-50' : 'border-soft bg-card hover:bg-gray-50'}`}
+                  aria-label="Toggle maintenance"
+                  disabled={maintSaving}
+                >
+                  {maintSaving ? 'Updating…' : (maintenance ? 'Stop maintenance' : 'Start maintenance')}
+                </button>
+              )}
               <button
                 onClick={() => navigate('/chat')}
                 className="rounded-md px-3 py-1.5 text-sm border border-soft bg-card hover:bg-gray-50"
@@ -296,6 +344,32 @@ export default function Admin() {
         {/* Sidebar (desktop) */}
     <aside className="hidden md:block border-r border-soft p-4 bg-card">
           <nav className="space-y-2 text-sm">
+      {maintenance && role !== 'super' && (
+        <div className="block w-full text-left rounded-lg px-3 py-2 transition bg-amber-50 border border-amber-300 text-amber-800">
+          Maintenance is active
+        </div>
+      )}
+  {role === 'super' && (
+    <button
+          onClick={async () => {
+            try {
+              setMaintSaving(true);
+      const ref = doc(db, 'programs', 'app_config');
+      await setDoc(ref, { maintenance: !maintenance, updatedAt: serverTimestamp() }, { merge: true });
+              setBanner(!maintenance ? 'Maintenance enabled' : 'Maintenance disabled');
+              setTimeout(() => setBanner(null), 2000);
+            } catch (e) {
+              console.error('Maintenance toggle failed:', e);
+              setBanner('Failed to update maintenance flag (permissions)');
+              setTimeout(() => setBanner(null), 2500);
+            } finally {
+              setMaintSaving(false);
+            }
+          }}
+          className={`block w-full text-left rounded-lg px-3 py-2 transition ${maintenance ? 'bg-amber-50 border-amber-300 text-amber-800' : 'hover:bg-gray-50 border border-soft bg-card'}`}
+          disabled={maintSaving}
+        >{maintSaving ? 'Updating…' : (maintenance ? 'Stop maintenance' : 'Start maintenance')}</button>
+      )}
       <button onClick={() => setTab("add")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "add" ? "btn-primary text-white" : "hover:bg-gray-50 border border-soft bg-card"}`}>Add</button>
       <button onClick={() => setTab("view")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "view" ? "btn-primary text-white" : "hover:bg-gray-50 border border-soft bg-card"}`}>View</button>
       <button onClick={() => setTab("users")} className={`block w-full text-left rounded-lg px-3 py-2 transition ${tab === "users" ? "btn-primary text-white" : "hover:bg-gray-50 border border-soft bg-card"}`}>Users</button>
