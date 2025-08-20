@@ -21,6 +21,24 @@ const BANGLISH_HINTS = [
   "valo","bhalo","onek","kharap","dorkar","lagbe","koto","kotota","kotodur"
 ];
 
+// Polite acknowledgments that shouldn't trigger domain guard
+const POLITE_PHRASES: string[] = [
+  // English
+  "thanks", "thank you", "thx", "tnx", "thanks a lot", "appreciate", "much appreciated",
+  "great", "great work", "awesome", "nice", "cool", "well done", "good job",
+  // Bangla script
+  "ধন্যবাদ", "ধন্যবাদ।", "ধন্যবাদ!", "ধন্যবাদ,",
+  // Banglish/romanized
+  "dhonnobad", "donobad", "shukriya"
+];
+
+function isPolitePhrase(q: string): boolean {
+  const s = q.trim().toLowerCase();
+  // strip trivial punctuation
+  const core = s.replace(/[!.,\s]+$/g, "");
+  return POLITE_PHRASES.some((p) => core === p || core.includes(p));
+}
+
 function detectUserLanguage(text: string): "en" | "bn" | "banglish" {
   if (hasBangla(text)) return "bn";
   const s = text.toLowerCase();
@@ -344,6 +362,12 @@ export async function askSadia(question: string): Promise<string> {
   if (!q) return "Please type a question.";
 
   const lang = detectUserLanguage(q);
+  // Friendly acknowledgment for polite messages like "Thanks"
+  if (isPolitePhrase(q)) {
+    if (lang === 'bn') return "আপনাকে ধন্যবাদ! আরও কিছু জানতে চাইলে বলুন।";
+    if (lang === 'banglish') return "Dhonnobad! Jodi aro kichu janar thake, prosno korun.";
+    return "Thank you! Let me know if you have any more questions.";
+  }
   if (isIdentityQuestion(q)) return lang === 'bn' ? IDENTITY_BN : lang === 'banglish' ? IDENTITY_BANGLISH : IDENTITY_EN;
 
   if (!isDomainQuestion(q)) {

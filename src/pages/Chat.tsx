@@ -146,6 +146,7 @@ export default function Chat() {
   });
   const [input, setInput] = useState("");
   const listEndRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showScrollFab, setShowScrollFab] = useState(false);
@@ -163,6 +164,28 @@ export default function Chat() {
     if (!line) return "New chat";
     return line.length > 50 ? line.slice(0, 50) + "…" : line;
   }, [messages]);
+  // measure fixed bars to avoid content going under them
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const maintenanceRef = useRef<HTMLDivElement | null>(null);
+  const [bottomPad, setBottomPad] = useState(28); // default similar to prior pb-28
+  useEffect(() => {
+    function recomputePad() {
+      const composerH = composerRef.current?.offsetHeight || 0;
+      const maintH = maintenanceRef.current?.offsetHeight || 0;
+      // add small breathing room
+      const extra = 16;
+      setBottomPad(composerH + maintH + extra);
+    }
+    recomputePad();
+    const ro = new ResizeObserver(recomputePad);
+    if (composerRef.current) ro.observe(composerRef.current);
+    if (maintenanceRef.current) ro.observe(maintenanceRef.current);
+    window.addEventListener('resize', recomputePad);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', recomputePad);
+    };
+  }, [started, maintenance, role]);
 
   const hasOnlyAssistant = useMemo(
     () => messages.every((m) => m.role === "assistant"),
@@ -205,17 +228,17 @@ export default function Chat() {
 
   // Show/hide scroll-to-bottom FAB based on scroll position
   useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
     function onScroll() {
-      const scrolledFromBottom = Math.abs(
-        (document.scrollingElement?.scrollHeight || 0) -
-          (document.scrollingElement?.scrollTop || 0) -
-          (document.scrollingElement?.clientHeight || 0)
-      );
+      if (!contentRef.current) return;
+      const n = contentRef.current;
+      const scrolledFromBottom = Math.abs(n.scrollHeight - n.scrollTop - n.clientHeight);
       setShowScrollFab(scrolledFromBottom > 120);
     }
-    window.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("scroll", onScroll, { passive: true } as any);
     onScroll();
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll as any);
   }, []);
 
   async function send(text?: string) {
@@ -304,7 +327,7 @@ export default function Chat() {
   }
 
   return (
-  <div className="min-h-screen bg-app flex flex-col">
+  <div className="h-[100dvh] bg-app flex flex-col overflow-hidden">
       {/* Top bar */}
       <header className="sticky top-0 z-10 bg-surface border-b border-soft">
         <div className="flex items-center justify-between px-4 py-3 gap-2">
@@ -452,8 +475,8 @@ export default function Chat() {
         </aside>
       </div>
 
-      {/* Messages / Onboarding */}
-  <main className="relative flex-1 px-3 pb-28 pt-4 fade-up">{/* pad bottom for composer */}
+    {/* Messages / Onboarding */}
+  <main ref={contentRef} className="relative flex-1 overflow-auto px-3 pt-4 fade-up" style={{ paddingBottom: bottomPad }}>{/* pad bottom for composer */}
         {/* Background aurora blobs */}
         <div className="pointer-events-none absolute inset-0 -z-10">
           <div className="aurora-blob aurora-1" />
@@ -510,6 +533,7 @@ export default function Chat() {
   {/* Composer (hidden for admins during maintenance; supers always allowed; users already blocked by route guard) */}
   {started && !(maintenance && role === 'admin') && (
         <div
+          ref={composerRef}
           className="fixed bottom-0 left-0 right-0 z-20 border-t border-gray-200 bg-white/80 backdrop-blur"
           style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px))" }}
         >
@@ -646,18 +670,19 @@ export default function Chat() {
         </div>
       )}
   {maintenance && role === 'admin' && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-center text-sm">
+        <div ref={maintenanceRef} className="fixed bottom-0 left-0 right-0 z-20 border-t border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-center text-sm">
           Maintenance mode is on.
           <Link to="/admin" className="ml-2 underline font-medium">Go to Admin</Link>
         </div>
       )}
 
       {/* Scroll-to-bottom floating action button */}
-      {showScrollFab && (
+    {showScrollFab && (
         <button
           aria-label="Scroll to bottom"
-          onClick={() => listEndRef.current?.scrollIntoView({ behavior: "smooth" })}
-          className="fixed bottom-24 right-4 z-30 rounded-full bg-black text-white p-3 shadow-lg hover:opacity-90"
+      onClick={() => listEndRef.current?.scrollIntoView({ behavior: "smooth", block: 'end' })}
+      className="fixed right-4 z-30 rounded-full bg-black text-white p-3 shadow-lg hover:opacity-90"
+      style={{ bottom: Math.max(bottomPad, 24) }}
         >
           ↓
         </button>

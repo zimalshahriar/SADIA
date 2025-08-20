@@ -20,7 +20,7 @@ export default function Home() {
   }, [user, role, navigate]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-app">
+  <div className="relative min-h-screen bg-app">
       {/* decorative gradients */}
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="absolute left-1/2 top-[-10%] h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-gradient-to-br from-[color-mix(in_oklab,var(--tint-2)_35%,transparent)] to-transparent blur-3xl" />

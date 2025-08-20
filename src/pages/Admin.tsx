@@ -243,11 +243,13 @@ export default function Admin() {
   }, [filter.country, allCountries]);
 
   // Scroll to top when switching to View so the new item is visible (ordered desc)
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (tab === "view") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-  // gently focus search to guide next action
-  setTimeout(() => searchRef.current?.focus(), 220);
+      // Scroll the admin content container to top to avoid window-level width jumps
+      scrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      // gently focus search to guide next action
+      setTimeout(() => searchRef.current?.focus(), 220);
     }
   }, [tab]);
 
@@ -265,7 +267,7 @@ export default function Admin() {
 
 
   return (
-    <div className="min-h-screen bg-app">
+    <div className="h-[100dvh] bg-app flex flex-col overflow-hidden">
       {/* Mobile/top header */}
       <header className="sticky top-0 z-30 w-full border-b border-soft bg-surface">
         <div className="mx-auto max-w-6xl px-4 py-3">
@@ -340,7 +342,8 @@ export default function Admin() {
         )}
       </header>
 
-      <div className="mx-auto grid md:grid-cols-[240px_1fr] max-w-6xl">
+  <div ref={scrollRef} className="flex-1 overflow-auto scrollbar-stable">
+        <div className="mx-auto grid md:grid-cols-[240px_1fr] max-w-6xl">
         {/* Sidebar (desktop) */}
     <aside className="hidden md:block border-r border-soft p-4 bg-card">
           <nav className="space-y-2 text-sm">
@@ -533,6 +536,7 @@ export default function Admin() {
           <UsersSection />
         </FadeSection>
         </main>
+        </div>
       </div>
 
       {/* Edit Modal */}
