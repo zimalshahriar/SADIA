@@ -1,6 +1,11 @@
 firebase-debug.log
 .firebase/
 dist
+dev-dist
+.env
+.env.*
+# Do not commit function env files either
+functions/.env
 # Logs
 logs
 *.log
