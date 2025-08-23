@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { auth, db } from "../firebase/config";
 import {
   GoogleAuthProvider,
@@ -40,6 +40,7 @@ type AuthContextShape = {
   role: AppRole;
   suspended: boolean;
   maintenance: boolean;
+  accountRemoved: boolean;
   signInWithGoogle: () => Promise<void>;
   signOutApp: () => Promise<void>;
 };
@@ -51,6 +52,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<AppUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [maintenance, setMaintenance] = useState<boolean>(false); // programs/app_config single source
+  const [accountRemoved, setAccountRemoved] = useState<boolean>(false);
+  // Tracks whether this session has ever seen an existing profile document to distinguish
+  // between an account that was removed vs. a brand-new sign up racing before profile creation.
+  const hadProfileRef = useRef(false);
+  // Online status (app requires connectivity)
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    function handleOnline() { setIsOnline(true); }
+    function handleOffline() { setIsOnline(false); }
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -58,6 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!u) {
         setProfile(null);
         setLoading(false);
+  setAccountRemoved(false);
+  hadProfileRef.current = false;
         return;
       }
       // Use cached role/suspended for instant UI when possible
@@ -121,25 +141,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsub();
   }, []);
 
-  // Maintenance subscription (single source): programs/app_config
+  // Live subscription to own profile doc to detect admin removal in real time.
   useEffect(() => {
+    if (!user) return;
+    const ref = doc(db, 'users', user.uid);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        // Profile present: mark we have seen it and ensure removal flag cleared
+        hadProfileRef.current = true;
+        if (accountRemoved) setAccountRemoved(false);
+      } else {
+        // Only show removal if we previously observed a profile (not just initial create race)
+        if (hadProfileRef.current) setAccountRemoved(true);
+      }
+    }, (err) => {
+      if ((err as any)?.code === 'permission-denied' && hadProfileRef.current) {
+        setAccountRemoved(true);
+      }
+    });
+    return () => unsub();
+  }, [user?.uid, accountRemoved]);
+
+  // Maintenance subscription (single source): programs/app_config (public read via rules for this doc)
+  useEffect(() => {
+    const ref = doc(db, "programs", "app_config");
+    let unsub: (() => void) | undefined;
     try {
-      const ref = doc(db, "programs", "app_config");
-      const unsub = onSnapshot(
+      unsub = onSnapshot(
         ref,
         (snap) => {
           if (!snap.exists()) { setMaintenance(false); return; }
           const data = snap.data() as any | undefined;
           setMaintenance(!!data?.maintenance);
         },
-        () => {
+        (err) => {
+          if ((err as any)?.code === 'permission-denied') {
+            // Fallback: hide maintenance (assume false) rather than crash
+            setMaintenance(false);
+            return;
+          }
           setMaintenance(false);
         }
       );
-      return () => unsub();
     } catch {
       setMaintenance(false);
     }
+    return () => { if (unsub) unsub(); };
   }, []);
 
   const role: AppRole = useMemo(() => {
@@ -176,11 +223,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role,
   suspended,
   maintenance,
+  accountRemoved,
     signInWithGoogle,
     signOutApp,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      {/* Offline required overlay */}
+      {!isOnline && !accountRemoved && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-soft bg-card p-5 space-y-4 text-center">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">No Internet Connection</h2>
+              <p className="text-sm text-muted">An active internet connection is required to use SADIA.</p>
+            </div>
+            <div className="text-xs text-muted bg-surface border border-soft rounded-lg p-3 text-left">
+              <p>You're currently offline. Some content may appear stale. Reconnect to continue.</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => { if (navigator.onLine) { setIsOnline(true); } else { /* trigger a lightweight ping could be added */ } }}
+                className="rounded-lg btn-primary px-4 py-2 text-sm disabled:opacity-60"
+                disabled={navigator.onLine}
+              >{navigator.onLine ? 'Reconnected' : 'Retry'}</button>
+              <button
+                onClick={() => window.location.reload()}
+                className="rounded-lg border border-soft bg-card px-4 py-2 text-sm hover:bg-gray-50"
+              >Reload Page</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {accountRemoved && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-soft bg-card p-5 space-y-4 text-center">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">Account Removed</h2>
+              <p className="text-sm text-muted">This account was removed by an administrator. Your active session will end now.</p>
+            </div>
+            <div className="text-xs text-muted bg-surface border border-soft rounded-lg p-3 text-left">
+              <p className="mb-1"><span className="font-medium">What happened?</span> Your profile document was deleted.</p>
+              <p className="mb-1"><span className="font-medium">Data:</span> Associated chats may have been removed.</p>
+              <p><span className="font-medium">Next:</span> You can sign in again only if allowed to recreate an account.</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={async () => { try { await signOut(auth); window.location.replace('/home'); } catch {} }}
+                className="rounded-lg btn-primary px-4 py-2 text-sm"
+              >Return Home</button>
+              <button
+                onClick={async () => { try { await signOut(auth); } catch {} }}
+                className="rounded-lg border border-soft bg-card px-4 py-2 text-sm hover:bg-gray-50"
+              >Sign out</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

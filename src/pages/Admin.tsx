@@ -649,19 +649,34 @@ function UsersSection() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [q, setQ] = useState('');
   const [banner, setBanner] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   type ActionType = 'promote' | 'demote' | 'suspend' | 'unsuspend' | 'remove';
   const [confirm, setConfirm] = useState<{ type: ActionType; user: UserRow } | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     const qref = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(qref, (snap) => {
       const arr: UserRow[] = [];
       snap.forEach((d) => {
         const data = d.data() as UserRow;
-        if ((data as any).deletedAt) return; // hide soft-deleted
         arr.push({ ...data, uid: d.id });
       });
       setUsers(arr);
+      setLoadError(null);
+      setLoading(false);
+    }, async (err) => {
+      console.error('Users snapshot error:', err);
+      setLoadError((err as any)?.code || 'unknown-error');
+      // Fallback: one-time fetch without order if allowed
+      try {
+        const plainSnap = await getDocs(collection(db, 'users'));
+        const arr: UserRow[] = [];
+        plainSnap.forEach(d => { const data = d.data() as UserRow; arr.push({ ...data, uid: d.id }); });
+        setUsers(arr);
+      } catch {}
+      setLoading(false);
     });
     return () => unsub();
   }, []);
@@ -680,7 +695,11 @@ function UsersSection() {
   const canChangeRole = (u: UserRow) => currentRole === 'super' && u.email !== SUPER_EMAIL;
   const canSuspend = (u: UserRow) =>
     u.email !== SUPER_EMAIL && ((currentRole === 'super') || (currentRole === 'admin' && u.role === 'user'));
-  const canRemove = (u: UserRow) => u.email !== SUPER_EMAIL && canSuspend(u); // same constraints
+  const canDelete = (u: UserRow) => {
+    if (u.email === SUPER_EMAIL) return false;
+    if (currentRole === 'super') return true; // super can delete anyone except super email
+    return currentRole === 'admin' && u.role === 'user'; // admin only regular users
+  };
 
   async function setRole(u: UserRow, role: 'user' | 'admin') {
     await updateDoc(doc(db, 'users', u.uid), { role });
@@ -694,10 +713,22 @@ function UsersSection() {
     setTimeout(() => setBanner(null), 2000);
   }
 
-  async function removeUser(u: UserRow) {
-    await updateDoc(doc(db, 'users', u.uid), { deletedAt: serverTimestamp(), suspended: true });
-    setBanner(`Removed ${u.email || u.uid}`);
-    setTimeout(() => setBanner(null), 2000);
+  async function hardRemoveUser(u: UserRow) {
+    // Delete chats then user doc
+    try {
+      const chatsSnap = await getDocs(collection(db, 'users', u.uid, 'chats'));
+      for (const c of chatsSnap.docs) {
+        const msgs = await getDocs(collection(db, 'users', u.uid, 'chats', c.id, 'messages'));
+        for (const m of msgs.docs) await deleteDoc(m.ref);
+        await deleteDoc(c.ref);
+      }
+      await deleteDoc(doc(db, 'users', u.uid));
+  setBanner(`Removed ${u.email || u.uid}`);
+      setTimeout(() => setBanner(null), 2000);
+    } catch (e) {
+  setBanner('Failed to remove user');
+      setTimeout(() => setBanner(null), 2500);
+    }
   }
 
   return (
@@ -716,6 +747,12 @@ function UsersSection() {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+      {loading && (
+        <div className="text-sm text-muted mb-3">Loading users…</div>
+      )}
+      {loadError && !loading && users.length === 0 && (
+        <div className="mb-3 text-sm text-red-600">Failed to load users ({loadError}). If you just promoted this account to admin, refresh. Ensure Firestore rules are deployed.</div>
+      )}
 
       {/* Desktop table */}
       <div className="hidden md:block overflow-x-auto rounded-xl border border-soft bg-card">
@@ -755,13 +792,18 @@ function UsersSection() {
                     {canSuspend(u) && (
                       <button className="rounded border border-soft bg-card px-2 py-1" onClick={() => setConfirm({ type: u.suspended ? 'unsuspend' : 'suspend', user: u })}>{u.suspended ? 'Unsuspend' : 'Suspend'}</button>
                     )}
-                    {canRemove(u) && (
+                    {canDelete(u) && (
                       <button className="rounded border border-soft bg-card px-2 py-1 text-red-600" onClick={() => setConfirm({ type: 'remove', user: u })}>Remove</button>
                     )}
                   </div>
                 </td>
               </tr>
             ))}
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-3 py-6 text-center text-sm text-muted">{loadError ? 'No users (permission issue)' : 'No users found.'}</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -789,12 +831,15 @@ function UsersSection() {
               {canSuspend(u) && (
                 <button className="rounded border border-soft bg-card px-2 py-1 text-xs" onClick={() => setConfirm({ type: u.suspended ? 'unsuspend' : 'suspend', user: u })}>{u.suspended ? 'Unsuspend' : 'Suspend'}</button>
               )}
-              {canRemove(u) && (
+              {canDelete(u) && (
                 <button className="rounded border border-soft bg-card px-2 py-1 text-xs text-red-600" onClick={() => setConfirm({ type: 'remove', user: u })}>Remove</button>
               )}
             </div>
           </div>
         ))}
+        {!loading && filtered.length === 0 && (
+          <div className="text-center text-sm text-muted py-6">{loadError ? 'Unable to load users.' : 'No users found.'}</div>
+        )}
       </div>
 
       {/* Confirm actions modal */}
@@ -805,7 +850,7 @@ function UsersSection() {
           confirm?.type === 'demote' ? 'Remove admin role?' :
           confirm?.type === 'suspend' ? 'Suspend user?' :
           confirm?.type === 'unsuspend' ? 'Unsuspend user?' :
-          'Remove user?'
+          confirm?.type === 'remove' ? 'Remove user?' : 'User action?'
         }
         description={(() => {
           if (!confirm) return null;
@@ -822,25 +867,28 @@ function UsersSection() {
           if (confirm.type === 'unsuspend') {
             return <>Unsuspend <strong>{email}</strong>? They will regain access.</>;
           }
-          // remove
-          return <>This will soft-delete <strong>{email}</strong>. Their record will be hidden and marked as removed.</>;
+          if (confirm.type === 'remove') {
+            return <>This will permanently remove <strong>{email}</strong>, their chats and profile. This cannot be undone.</>;
+          }
+          return null;
         })()}
         confirmText={
           confirm?.type === 'promote' ? 'Make admin' :
           confirm?.type === 'demote' ? 'Remove admin' :
           confirm?.type === 'suspend' ? 'Suspend' :
           confirm?.type === 'unsuspend' ? 'Unsuspend' :
-          'Remove'
+          confirm?.type === 'remove' ? 'Remove' :
+          'Confirm'
         }
         cancelText="Cancel"
-        variant={confirm?.type === 'remove' || confirm?.type === 'suspend' ? 'danger' : 'default'}
+  variant={confirm?.type === 'remove' || confirm?.type === 'suspend' ? 'danger' : 'default'}
         onConfirm={async () => {
           if (!confirm) return;
           const u = confirm.user;
           try {
             if (confirm.type === 'promote') await setRole(u, 'admin');
             else if (confirm.type === 'demote') await setRole(u, 'user');
-            else if (confirm.type === 'remove') await removeUser(u);
+            else if (confirm.type === 'remove') await hardRemoveUser(u);
             else await toggleSuspend(u);
           } finally {
             setConfirm(null);

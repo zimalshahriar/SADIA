@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoChevronBack } from "react-icons/io5";
 import ConfirmModal from "../components/ConfirmModal";
+import { useAuth } from "../auth/AuthProvider";
+import { deleteAllChats, deleteUserData } from "../chat/store";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -10,36 +12,33 @@ export default function Settings() {
   const [confirmDelete1Open, setConfirmDelete1Open] = useState(false);
   const [confirmDelete2Open, setConfirmDelete2Open] = useState(false);
 
-  const clearChatHistory = useCallback(() => {
+  const { user, signOutApp } = useAuth();
+
+  const clearChatHistory = useCallback(async () => {
+    if (!user) return;
     try {
-      localStorage.setItem("sadia:chat:messages", JSON.stringify([]));
-      localStorage.setItem("sadia:chat:started", "false");
-      setStatus("Chat history cleared.");
+      await deleteAllChats(user.uid);
+      setStatus("All chats deleted from your account.");
       navigate("/chat");
     } catch (e) {
-      setStatus("Failed to clear chat history.");
+      setStatus("Failed to delete chats.");
     } finally {
       setConfirmClearOpen(false);
     }
-  }, [navigate]);
+  }, [navigate, user]);
 
-  const deleteAccount = useCallback(() => {
+  const deleteAccount = useCallback(async () => {
+    if (!user) return;
     try {
-      // Remove all keys prefixed by 'sadia:'
-      const keys: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("sadia:")) keys.push(k);
-      }
-      keys.forEach((k) => localStorage.removeItem(k));
-      setStatus("Account deleted on this device.");
-      navigate("/home");
+      await deleteUserData(user.uid);
+      try { await signOutApp(); } catch {}
+      navigate("/home", { replace: true });
     } catch (e) {
-      setStatus("Failed to delete account.");
+      setStatus("Failed to delete account data.");
     } finally {
       setConfirmDelete2Open(false);
     }
-  }, [navigate]);
+  }, [navigate, user, signOutApp]);
 
   return (
     <div className="min-h-screen bg-app">
@@ -70,7 +69,7 @@ export default function Settings() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">Clear chat history</div>
-                  <div className="text-xs text-muted">Remove all your conversations from this device.</div>
+                  <div className="text-xs text-muted">Delete all your conversations from the database.</div>
                 </div>
                 <button onClick={() => setConfirmClearOpen(true)} className="rounded-lg border border-soft bg-card px-3 py-1.5 text-sm hover:bg-gray-50 hover-grow">
                   Clear
@@ -83,7 +82,7 @@ export default function Settings() {
         <section>
           <h2 className="mb-2 text-sm font-semibold text-muted">Danger zone</h2>
           <div className="rounded-2xl border border-red-200 bg-red-50/80 p-3 card-shadow">
-            <div className="mb-2 text-sm text-primary">Permanently delete your account data on this device.</div>
+            <div className="mb-2 text-sm text-primary">Permanently delete all your chats and profile document. You will be signed out immediately.</div>
             <button onClick={() => setConfirmDelete1Open(true)} className="rounded-lg bg-red-600 text-white px-3 py-1.5 text-sm hover:opacity-90 hover-grow">
               Delete account
             </button>
@@ -94,13 +93,13 @@ export default function Settings() {
       {/* Modals */}
       <ConfirmModal
         open={confirmClearOpen}
-        title="Clear chat history?"
+  title="Delete all chats?"
         description={
           <>
-            This will remove all your conversations from this device. This action cannot be undone.
+            This will permanently delete all your chats from our database. This cannot be undone.
           </>
         }
-        confirmText="Clear history"
+  confirmText="Delete all"
         cancelText="Cancel"
         variant="danger"
         onConfirm={clearChatHistory}
@@ -109,9 +108,9 @@ export default function Settings() {
 
       <ConfirmModal
         open={confirmDelete1Open}
-        title="Delete account on this device?"
+  title="Delete your account data?"
         description={
-          <>This will erase all SADIA data stored locally on this device. You will not be able to recover it.</>
+          <>This will permanently remove your chats and profile document. You can create a fresh account later by signing in again.</>
         }
         confirmText="Continue"
         cancelText="Cancel"
@@ -125,11 +124,11 @@ export default function Settings() {
 
       <ConfirmModal
         open={confirmDelete2Open}
-        title="Are you absolutely sure?"
+  title="Confirm permanent deletion"
         description={
-          <>This is permanent. All keys starting with 'sadia:' in local storage will be removed.</>
+          <>This is permanent. All your chats and your user document will be removed and you will be signed out.</>
         }
-        confirmText="Delete permanently"
+  confirmText="Delete data"
         cancelText="Back"
         variant="danger"
         onConfirm={deleteAccount}

@@ -55,15 +55,19 @@ import { IoMicOutline } from "react-icons/io5";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { askSadia, analyzeImage } from "../ai/assistant";
+import {
+  addMessage,
+  createChat,
+  deleteChat as deleteChatRemote,
+  maybeUpdateTitle,
+  subscribeToChats,
+  subscribeToMessages,
+  updateMessage,
+} from "../chat/store";
+import type { ChatMeta, ChatMessage } from "../chat/store";
 
-type Role = "assistant" | "user";
-type Message = {
-  id: string;
-  role: Role;
-  content: string;
-  timestamp: number;
-  imageDataUrl?: string; // optional inline image for this message
-};
+// Local message type mirrors stored ChatMessage
+type Message = ChatMessage;
 
 // Normalize assistant text: strip heavy markdown, keep bullets and links readable
 function formatAssistantText(raw: string) {
@@ -124,7 +128,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 }
 
 export default function Chat() {
-  const { signOutApp, role, maintenance } = useAuth();
+  const { signOutApp, role, maintenance, user } = useAuth();
   const { showPrompt, setShowPrompt, prompt, installed, canPrompt, dismiss } = usePwaInstallPrompt();
   const [started, setStarted] = useState<boolean>(() => {
     try {
@@ -134,16 +138,10 @@ export default function Chat() {
       return false;
     }
   });
-  const [messages, setMessages] = useState<Message[]>(() => {
-    try {
-      const raw = localStorage.getItem("sadia:chat:messages");
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as Message[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [chats, setChats] = useState<ChatMeta[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [input, setInput] = useState("");
   const listEndRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -156,14 +154,6 @@ export default function Chat() {
   const recognitionRef = useRef<any>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const chatTitle = useMemo(() => {
-    const firstUser = messages.find((m) => m.role === 'user');
-    if (!firstUser) return "New chat";
-    if (firstUser.imageDataUrl && !firstUser.content) return "Photo analysis";
-    const line = (firstUser.content || "").split("\n")[0].trim();
-    if (!line) return "New chat";
-    return line.length > 50 ? line.slice(0, 50) + "…" : line;
-  }, [messages]);
   // measure fixed bars to avoid content going under them
   const composerRef = useRef<HTMLDivElement | null>(null);
   const maintenanceRef = useRef<HTMLDivElement | null>(null);
@@ -213,18 +203,28 @@ export default function Chat() {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen]);
 
-  // Persist chat state
+  // Subscribe to chats for user
   useEffect(() => {
-    try {
-      localStorage.setItem("sadia:chat:messages", JSON.stringify(messages));
-    } catch {}
-  }, [messages]);
+    if (!user) return;
+    return subscribeToChats(user.uid, (list) => {
+      setChats(list);
+      if (!activeChatId && list.length > 0) {
+        setActiveChatId(list[0].id);
+        setStarted(true);
+      }
+    });
+  }, [user]);
 
+  // Subscribe to messages for active chat
   useEffect(() => {
-    try {
-      localStorage.setItem("sadia:chat:started", started ? "true" : "false");
-    } catch {}
-  }, [started]);
+    if (!user || !activeChatId) { setMessages([]); return; }
+    setLoadingMessages(true);
+    const unsub = subscribeToMessages(user.uid, activeChatId, (msgs) => {
+      setMessages(msgs);
+      setLoadingMessages(false);
+    });
+    return () => unsub();
+  }, [user, activeChatId]);
 
   // Show/hide scroll-to-bottom FAB based on scroll position
   useEffect(() => {
@@ -244,39 +244,44 @@ export default function Chat() {
   async function send(text?: string) {
     const content = (text ?? input).trim();
     if (!content) return;
+    if (!user) return;
+    // Create chat lazily if none active
+    let chatId = activeChatId;
+    if (!chatId) {
+      chatId = await createChat(user.uid, "Hi, I’m SADIA. I help Bangladeshi students with study abroad. Ask me about programs, costs, countries, or levels (Bachelor’s/Master’s).");
+      setActiveChatId(chatId);
+      setStarted(true);
+    }
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: "user",
       content,
       timestamp: Date.now(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+  addMessage(user.uid, chatId, userMsg).catch(()=>{});
+  setMessages((prev) => [...prev, userMsg]); // optimistic after write
     setInput("");
 
     // Show thinking bubble
-    const thinkingId = crypto.randomUUID();
-    const thinking: Message = {
-      id: thinkingId,
-      role: "assistant",
-      content: "…",
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, thinking]);
+  const thinkingId = crypto.randomUUID();
+  const thinking: Message = { id: thinkingId, role: "assistant", content: "…", timestamp: Date.now() };
+  addMessage(user.uid, chatId, thinking).catch(()=>{});
+  setMessages((prev) => [...prev, thinking]);
   // formatAssistantText is defined at module scope
     try {
       const answer = await askSadia(content);
       const formatted = formatAssistantText(answer);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === thinkingId ? { ...m, content: formatted } : m))
-      );
+      setMessages((prev) => prev.map((m) => (m.id === thinkingId ? { ...m, content: formatted } : m)));
+      updateMessage(user.uid, chatId, thinkingId, formatted).catch(()=>{});
+      // Set title if this was first user message
+      const priorUserCount = messages.filter(m=>m.role==='user').length;
+      if (priorUserCount === 0) {
+        maybeUpdateTitle(user.uid, chatId, userMsg.content);
+      }
     } catch (e) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === thinkingId
-            ? { ...m, content: "Sorry, I couldn't process that right now. Please try again." }
-            : m
-        )
-      );
+  const errTxt = "Sorry, I couldn't process that right now. Please try again.";
+  setMessages((prev) => prev.map((m) => (m.id === thinkingId ? { ...m, content: errTxt } : m)));
+  updateMessage(user.uid, chatId, thinkingId, errTxt).catch(()=>{});
     }
   }
 
@@ -296,38 +301,35 @@ export default function Chat() {
     "List budget-friendly programs in Europe for Bangladeshi students",
   ];
 
-  function resetChat() {
+  async function resetChat() {
+    if (!user) return;
+    const chatId = await createChat(user.uid, "New chat started. I’m SADIA — what would you like to do?");
+    setActiveChatId(chatId);
+    setMessages([]); // will populate via subscription
     setStarted(true);
-    setMessages([
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content:
-          "New chat started. I’m SADIA — what would you like to do?",
-        timestamp: Date.now(),
-      },
-    ]);
     setInput("");
   }
 
-  function startChat() {
+  async function startChat() {
+    if (!user) return;
+    const chatId = await createChat(user.uid, "Hi, I’m SADIA. I help Bangladeshi students with study abroad. Ask me about programs, costs, countries, or levels (Bachelor’s/Master’s).");
+    setActiveChatId(chatId);
     setStarted(true);
-    setMessages([
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content:
-          "Hi, I’m SADIA. I help Bangladeshi students with study abroad. Ask me about programs, costs, countries, or levels (Bachelor’s/Master’s).",
-        timestamp: Date.now(),
-      },
-    ]);
-    if (canPrompt && !installed) {
-      setTimeout(() => setShowPrompt(true), 400);
+    if (canPrompt && !installed) setTimeout(() => setShowPrompt(true), 400);
+  }
+
+  async function deleteChat(chatId: string) {
+    if (!user) return;
+    await deleteChatRemote(user.uid, chatId);
+    if (activeChatId === chatId) {
+      setActiveChatId(null);
+      setMessages([]);
+      setStarted(false);
     }
   }
 
   return (
-  <div className="h-[100dvh] bg-app flex flex-col overflow-hidden">
+    <div className="h-[100dvh] bg-app flex flex-col overflow-hidden">
       {/* Top bar */}
       <header className="sticky top-0 z-10 bg-surface border-b border-soft">
         <div className="flex items-center justify-between px-4 py-3 gap-2">
@@ -352,7 +354,7 @@ export default function Chat() {
           </div>
           <button
             onClick={() => {
-              const hasUserMessage = messages.some((m) => m.role === "user");
+              const hasUserMessage = messages.some((m) => m.role === 'user');
               if (started && hasUserMessage) setConfirmNewOpen(true);
               else resetChat();
             }}
@@ -456,29 +458,37 @@ export default function Chat() {
               </button>
             </nav>
 
-            {/* Recent conversations (ChatGPT-style: show current chat title) */}
-            <div className="mt-4 border-t border-soft pt-3">
-              <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">Recent</div>
-              {messages.length === 0 ? (
-                <div className="text-muted text-sm">No conversations yet</div>
-              ) : (
-                <button
-                  className="w-full text-left text-sm rounded-lg px-3 py-2 hover:bg-gray-50 border border-soft bg-white truncate"
-                  onClick={() => setDrawerOpen(false)}
-                  title={chatTitle}
-                >
-                  {chatTitle}
-                </button>
-              )}
+            {/* Chats list */}
+            <div className="mt-4 border-t border-soft pt-3 max-h-[40vh] overflow-auto">
+              <div className="text-[11px] uppercase tracking-wider text-gray-500 mb-2 flex items-center justify-between">
+                <span>Chats</span>
+              </div>
+              {chats.length === 0 && <div className="text-muted text-sm">No conversations yet</div>}
+              <div className="space-y-1">
+                {chats.map(c => (
+                  <div key={c.id} className={`group flex items-center gap-2 rounded-lg px-3 py-2 text-sm border ${c.id===activeChatId? 'border-soft bg-white shadow-sm': 'border-transparent hover:bg-gray-50'}`}>
+                    <button
+                      className="flex-1 text-left truncate"
+                      onClick={() => { setActiveChatId(c.id); setStarted(true); setDrawerOpen(false); }}
+                      title={c.title}
+                    >{c.title || 'New chat'}</button>
+                    <button
+                      aria-label="Delete chat"
+                      className="text-gray-400 hover:text-red-600"
+                      onClick={() => deleteChat(c.id)}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </aside>
       </div>
 
     {/* Messages / Onboarding */}
-  <main ref={contentRef} className="relative flex-1 overflow-auto px-3 pt-4 fade-up" style={{ paddingBottom: bottomPad }}>{/* pad bottom for composer */}
+  <main ref={contentRef} className="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pt-4 fade-up" style={{ paddingBottom: bottomPad }}>{/* pad bottom for composer */}
         {/* Background aurora blobs */}
-        <div className="pointer-events-none absolute inset-0 -z-10">
+  <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
           <div className="aurora-blob aurora-1" />
           <div className="aurora-blob aurora-2" />
         </div>
@@ -510,6 +520,7 @@ export default function Chat() {
                   ))}
                 </div>
               )}
+              {loadingMessages && <div className="text-center text-xs text-muted mb-4">Loading…</div>}
               {messages.map((m) => (
                 <MessageBubble key={m.id} msg={m} />
               ))}
@@ -703,7 +714,7 @@ export default function Chat() {
         open={confirmNewOpen}
         title="Start a new chat?"
         description={
-          <>This will clear the current conversation from the screen. Your past chats are stored locally and won’t sync.</>
+          <>Start a fresh conversation. Previous chats stay in your account unless you clear them in Settings.</>
         }
         confirmText="Start new chat"
         cancelText="Cancel"

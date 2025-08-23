@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions (defensive against missing user doc)
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.email == 'alshahriarzim@gmail.com';
+    }
+    function userDoc(uid) { return get(/databases/$(database)/documents/users/$(uid)); }
+    // Simplified isAdmin to mirror previously working logic (avoid edge case where .exists() short-circuits list queries)
+    function isAdmin() {
+      return request.auth != null && userDoc(request.auth.uid).data.role == 'admin';
+    }
+  function isAdminOrSuper() { return isSuperAdmin() || isAdmin(); }
+    function isOwner(userId) { return request.auth != null && request.auth.uid == userId; }
+    // Role must stay the same unless super (prevents self or admin escalation to admin/super)
+  function roleUnchanged() { return request.resource.data.role == resource.data.role; }
+    // On create, enforce self doc and restrict role field
+    function validCreate(userId) {
+      return isOwner(userId)
+        && (!('role' in request.resource.data) || request.resource.data.role == 'user');
+    }
+  // Target doc currently has regular user role
+  function targetRoleIsUser() { return resource != null && resource.data.role == 'user'; }
+  // Admin acting on another regular (non-admin) user
+  function adminActingOnUser(userId) { return isAdmin() && !isOwner(userId) && targetRoleIsUser(); }
+
+    // Users collection (profile documents)
+    match /users/{userId} {
+      // Create only for self; cannot set elevated role at creation
+      allow create: if validCreate(userId);
+
+  // Reads: owner always; admins/super can list & view all profiles (for admin panel)
+  allow get: if isOwner(userId) || isAdminOrSuper();
+  allow list: if isAdminOrSuper();
+
+      // Updates:
+      // - Self updates allowed only if not changing role
+      // - Admin updates others only if NOT changing role
+      // - Super can change anything (including role)
+      allow update: if (
+        // Self, no role change
+        (isOwner(userId) && roleUnchanged()) ||
+        // Admin modifying a regular user (e.g., suspend), role unchanged
+  (adminActingOnUser(userId) && roleUnchanged()) ||
+        // Super admin full control (can change role)
+        isSuperAdmin()
+      );
+
+      // Deletes: self delete, or admin/super delete any user
+  // Delete: self; super any; admin only regular users
+  allow delete: if isOwner(userId) || isSuperAdmin() || adminActingOnUser(userId);
+
+      // Chats subcollection for this user
+      match /chats/{chatId} {
+        allow create: if isOwner(userId);
+        // Owner full access; super full; admin can act on regular users (for moderation / deletion)
+        allow get, list, update, delete: if isOwner(userId) || isSuperAdmin() || adminActingOnUser(userId);
+
+        // Messages subcollection
+        match /messages/{messageId} {
+          allow create: if isOwner(userId);
+          allow get, list, update, delete: if isOwner(userId) || isSuperAdmin() || adminActingOnUser(userId);
+        }
+      }
+    }
+
+    // Programs collection (admin panel). Allow public read of app_config so unauth users don't get errors.
+    match /programs/{docId} {
+      allow read: if request.auth != null || docId == 'app_config';
+      allow write: if isAdminOrSuper();
+    }
+  }
+}
