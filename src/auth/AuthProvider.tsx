@@ -117,6 +117,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (typeof window !== 'undefined') {
             localStorage.setItem(roleKey, "user");
             localStorage.setItem(suspendedKey, "false");
+            // New profile just created: clear any previous PWA dismissal so prompt can appear for this fresh user.
+            try { localStorage.removeItem('sadia:pwa:dismissedAt'); } catch {}
           }
         } else {
           const data = snap.data() as AppUserProfile;

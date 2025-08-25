@@ -130,6 +130,12 @@ function MessageBubble({ msg }: { msg: Message }) {
 export default function Chat() {
   const { signOutApp, role, maintenance, user } = useAuth();
   const { showPrompt, setShowPrompt, prompt, installed, canPrompt, dismiss } = usePwaInstallPrompt();
+  // When the full install modal opens, signal app shell to hide any mini card
+  useEffect(() => {
+    if (showPrompt) {
+      try { window.dispatchEvent(new Event('sadia-hide-mini-install')); } catch {}
+    }
+  }, [showPrompt]);
   const [started, setStarted] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem("sadia:chat:started");
@@ -441,6 +447,18 @@ export default function Chat() {
               >
                 Settings
               </Link>
+              {/* Install App (sidebar) - only when not installed */}
+              {!installed && (
+                <button
+                  onClick={() => { setShowPrompt(true); setDrawerOpen(false); }}
+                  className="w-full text-left rounded-lg px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <span>Install app</span>
+                  {!canPrompt && (
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-gray-500">Manual</span>
+                  )}
+                </button>
+              )}
               {(role === 'admin' || role === 'super') && (
                 <Link
                   to="/admin"
