@@ -11,6 +11,9 @@ export default function App() {
   // Global PWA install capture so user sees prompt even if they don't open Chat first
   const [pwaEvent, setPwaEvent] = useState<any>(null);
   const [showMiniPrompt, setShowMiniPrompt] = useState(false);
+  const [installed, setInstalled] = useState<boolean>(() => {
+    try { return localStorage.getItem('sadia:pwa:installed') === 'true'; } catch { return false; }
+  });
   useEffect(() => {
     function handler(e: any) {
       e.preventDefault();
@@ -18,10 +21,38 @@ export default function App() {
       // Only auto show if not previously dismissed (Chat hook will also respect this)
       try {
         const dismissed = localStorage.getItem('sadia:pwa:dismissedAt');
-        if (!dismissed) setShowMiniPrompt(true);
+        if (!dismissed && !installed) setShowMiniPrompt(true);
       } catch {}
     }
     window.addEventListener('beforeinstallprompt', handler);
+    function onAppInstalled(){
+      setInstalled(true);
+      try { localStorage.setItem('sadia:pwa:installed','true'); } catch {}
+      setShowMiniPrompt(false);
+    }
+    window.addEventListener('appinstalled', onAppInstalled);
+    // Hide mini prompt when full modal triggers
+    function hideMini(){ setShowMiniPrompt(false); }
+    window.addEventListener('sadia-hide-mini-install', hideMini);
+    // Standalone detection (user launched installed app, so don't show mini prompt)
+    const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator as any).standalone;
+    if (standalone && !installed) {
+      setInstalled(true);
+      try { localStorage.setItem('sadia:pwa:installed','true'); } catch {}
+    }
+    // Related apps heuristic
+    (async () => {
+      try {
+        const anyNav: any = navigator;
+        if (!installed && typeof anyNav.getInstalledRelatedApps === 'function') {
+          const rel = await anyNav.getInstalledRelatedApps();
+          if (Array.isArray(rel) && rel.length > 0) {
+            setInstalled(true);
+            try { localStorage.setItem('sadia:pwa:installed','true'); } catch {}
+          }
+        }
+      } catch {}
+    })();
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
   async function triggerInstall() {
@@ -69,9 +100,9 @@ export default function App() {
           }
         />
       </Routes>
-      {showMiniPrompt && (
+    {showMiniPrompt && !installed && (
         <div className="fixed bottom-4 right-4 z-40 w-[260px] rounded-2xl border border-soft bg-card shadow-xl p-3 space-y-2 text-sm">
-          <div className="font-semibold text-sm">Install SADIA</div>
+      <div className="font-semibold text-sm">Install SADIA</div>
           <p className="text-xs text-muted">Add the app to your home screen for a better experience.</p>
           <div className="flex gap-2 justify-end">
             <button onClick={dismissMini} className="px-2 py-1 rounded-md border border-soft bg-card hover:bg-gray-50 text-xs">Later</button>
@@ -79,6 +110,7 @@ export default function App() {
           </div>
         </div>
       )}
+  {/* Removed persistent installed badge to avoid overlay overlap on mobile */}
     </BrowserRouter>
   );
 }

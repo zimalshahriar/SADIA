@@ -6,6 +6,9 @@ function usePwaInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [wasInstalledBefore, setWasInstalledBefore] = useState<boolean>(() => {
+    try { return localStorage.getItem('sadia:pwa:installed') === 'true'; } catch { return false; }
+  });
   useEffect(() => {
     function onBeforeInstallPrompt(e: any) {
       e.preventDefault();
@@ -22,6 +25,8 @@ function usePwaInstallPrompt() {
     }
     function onAppInstalled() {
       setInstalled(true);
+      setWasInstalledBefore(true);
+      try { localStorage.setItem('sadia:pwa:installed', 'true'); } catch {}
       setShowPrompt(false);
       setDeferredPrompt(null);
     }
@@ -29,12 +34,37 @@ function usePwaInstallPrompt() {
     window.addEventListener("appinstalled", onAppInstalled);
     // Check iOS Safari or already installed
     const isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator as any).standalone;
-    if (isStandalone) setInstalled(true);
+    if (isStandalone) {
+      setInstalled(true);
+      if (!wasInstalledBefore) {
+        setWasInstalledBefore(true);
+        try { localStorage.setItem('sadia:pwa:installed', 'true'); } catch {}
+      }
+    }
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
       window.removeEventListener("appinstalled", onAppInstalled);
     };
-  }, []);
+  }, [wasInstalledBefore]);
+  // Heuristic: detect an existing installation (user opened regular tab) using getInstalledRelatedApps (Chrome/Edge) so we can hide redundant install UI.
+  useEffect(() => {
+    let cancelled = false;
+    async function detectExisting() {
+      if (installed || wasInstalledBefore) return; // already known
+      try {
+        const anyNav: any = navigator;
+        if (typeof anyNav.getInstalledRelatedApps === 'function') {
+          const related = await anyNav.getInstalledRelatedApps();
+          if (!cancelled && Array.isArray(related) && related.length > 0) {
+            setWasInstalledBefore(true);
+            try { localStorage.setItem('sadia:pwa:installed', 'true'); } catch {}
+          }
+        }
+      } catch {/* ignore */}
+    }
+    detectExisting();
+    return () => { cancelled = true; };
+  }, [installed, wasInstalledBefore]);
   const prompt = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -48,7 +78,7 @@ function usePwaInstallPrompt() {
     try { localStorage.setItem("sadia:pwa:dismissedAt", String(Date.now())); } catch {}
     setShowPrompt(false);
   };
-  return { showPrompt, setShowPrompt, prompt, installed, canPrompt: !!deferredPrompt, dismiss };
+  return { showPrompt, setShowPrompt, prompt, installed, wasInstalledBefore, canPrompt: !!deferredPrompt, dismiss };
 }
 import { RxHamburgerMenu, RxPaperPlane, RxPlus, RxCross2 } from "react-icons/rx";
 import { IoMicOutline } from "react-icons/io5";
@@ -129,7 +159,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 
 export default function Chat() {
   const { signOutApp, role, maintenance, user } = useAuth();
-  const { showPrompt, setShowPrompt, prompt, installed, canPrompt, dismiss } = usePwaInstallPrompt();
+  const { showPrompt, setShowPrompt, prompt, installed, wasInstalledBefore, canPrompt, dismiss } = usePwaInstallPrompt();
   // When the full install modal opens, signal app shell to hide any mini card
   useEffect(() => {
     if (showPrompt) {
@@ -353,9 +383,13 @@ export default function Chat() {
               <button
                 className={`ml-auto hide-xs inline-flex items-center gap-2 shrink-0 rounded-full border px-2.5 py-1 text-xs ${canPrompt ? 'border-soft hover:bg-gray-100' : 'border-dashed border-soft text-gray-600'}`}
                 onClick={() => setShowPrompt(true)}
+                title={canPrompt ? 'Install SADIA' : 'Use browser install icon/menu'}
               >
-                Install app
+                {canPrompt ? (wasInstalledBefore ? 'Install again' : 'Install app') : 'How to install'}
               </button>
+            )}
+            {installed && (
+              <span className="ml-auto text-[11px] text-gray-500 rounded-full border border-dashed border-soft px-2 py-0.5">Installed</span>
             )}
           </div>
           <button
@@ -378,19 +412,34 @@ export default function Chat() {
             <img src={sadiaLogo} alt="SADIA logo" className="mx-auto mb-3 h-12 w-12 rounded-full bg-card border border-soft object-contain" />
             <div className="font-semibold text-lg mb-1">Install SADIA</div>
             <div className="text-muted text-sm mb-4">Get the full app experience on your device. Install SADIA to your home screen.</div>
-            <div className="flex gap-2 justify-center">
-              <button
-                className="rounded-lg btn-primary px-4 py-2"
-                onClick={prompt}
-              >Install</button>
-              <button
-                className="rounded-lg bg-card border border-soft px-4 py-2 hover:bg-gray-100"
-                onClick={dismiss}
-              >Maybe later</button>
-            </div>
-            {!canPrompt && (
-              <div className="mt-3 text-xs text-muted">
-                Tip: On iOS Safari, use Share → Add to Home Screen. On desktop Chrome, use the install icon in the address bar.
+            {canPrompt ? (
+              <div className="flex gap-2 justify-center">
+                <button
+                  className="rounded-lg btn-primary px-4 py-2"
+                  onClick={prompt}
+                >Install</button>
+                <button
+                  className="rounded-lg bg-card border border-soft px-4 py-2 hover:bg-gray-100"
+                  onClick={dismiss}
+                >Maybe later</button>
+              </div>
+            ) : (
+              <div className="space-y-3 text-left">
+                <div className="rounded-lg bg-surface border border-soft p-3 text-xs leading-relaxed text-muted">
+                  <p className="mb-2 font-medium text-gray-700">How to install:</p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li><span className="font-medium">Desktop Chrome/Edge:</span> Click the install icon in the address bar (box with arrow) or menu ⋮ → <em>Install App</em>.</li>
+                    <li><span className="font-medium">Android Chrome:</span> Menu ⋮ → <em>Install app</em> (or <em>Add to Home screen</em>).</li>
+                    <li><span className="font-medium">iOS Safari:</span> Share icon → <em>Add to Home Screen</em>.</li>
+                  </ul>
+                  <p className="mt-2">Browser won’t show the automatic prompt again right away after choosing “Maybe later”. Use the icon/menu above.</p>
+                </div>
+                <div className="flex justify-center">
+                  <button
+                    className="rounded-lg bg-card border border-soft px-4 py-2 hover:bg-gray-100 text-sm"
+                    onClick={dismiss}
+                  >Close</button>
+                </div>
               </div>
             )}
           </div>
@@ -453,11 +502,16 @@ export default function Chat() {
                   onClick={() => { setShowPrompt(true); setDrawerOpen(false); }}
                   className="w-full text-left rounded-lg px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
                 >
-                  <span>Install app</span>
+                  <span>{canPrompt ? (wasInstalledBefore ? 'Install again' : 'Install app') : 'How to install'}</span>
                   {!canPrompt && (
-                    <span className="ml-auto text-[10px] uppercase tracking-wide text-gray-500">Manual</span>
+                    <span className="ml-auto text-[10px] uppercase tracking-wide text-gray-500">Guide</span>
                   )}
                 </button>
+              )}
+              {installed && (
+                <div className="w-full rounded-lg px-3 py-2 text-xs text-gray-500 flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> App installed
+                </div>
               )}
               {(role === 'admin' || role === 'super') && (
                 <Link
@@ -568,10 +622,9 @@ export default function Chat() {
         >
           <div className="mx-auto w-full max-w-xl px-3 pt-2 pb-3">
             <div className="relative">
-              {/* subtle top gradient like ChatGPT */}
-              <div className="pointer-events-none absolute -top-4 left-0 right-0 h-4 bg-gradient-to-t from-transparent to-white" />
+              {/* removed gradient overlay to avoid white band */}
             </div>
-            <div className="flex items-end gap-2 fade-up">
+            <div className="fade-up">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -582,15 +635,15 @@ export default function Chat() {
                   if (f) setImageFile(f);
                 }}
               />
-              <button
-                aria-label="Add photo"
-                className="shrink-0 p-2 rounded-xl hover:bg-gray-100 hover-grow"
-                onClick={() => fileInputRef.current?.click()}
-                title="Add photo"
-              >
-                <RxPlus size={20} />
-              </button>
-              <div className="flex-1 rounded-2xl border border-gray-200 bg-white px-3 py-2 card-shadow">
+              <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 card-shadow">
+                <button
+                  aria-label="Add photo"
+                  className="shrink-0 h-9 w-9 flex items-center justify-center rounded-full hover:bg-gray-100"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Add photo"
+                >
+                  <RxPlus size={20} />
+                </button>
                 <textarea
                   ref={textareaRef}
                   value={input}
@@ -598,13 +651,11 @@ export default function Chat() {
                   onKeyDown={onKeyDown}
                   rows={1}
                   placeholder="Message SADIA"
-                  className="w-full resize-none outline-none text-[15px] leading-6 placeholder:text-gray-400 max-h-40"
+                  className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-6 placeholder:text-gray-400 max-h-40 py-1"
                 />
-              </div>
-        {input.trim().length === 0 ? (
                 <button
                   aria-label="Voice input"
-                  className={`shrink-0 p-2 rounded-xl ${listening ? 'bg-green-600 text-white' : 'btn-primary'} hover:opacity-90 hover-grow card-shadow`}
+                  className={`shrink-0 h-9 w-9 flex items-center justify-center rounded-full ${listening ? 'bg-green-600 text-white' : 'bg-black text-white'} hover:opacity-90 transition`}
                   onClick={() => {
                     const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
                     if (!SR) {
@@ -616,12 +667,17 @@ export default function Chat() {
                       r.lang = 'en-US';
                       r.interimResults = true;
                       r.continuous = true;
+                      let lastConcat = '';
                       r.onresult = (ev: any) => {
                         let txt = '';
                         for (let i = ev.resultIndex; i < ev.results.length; i++) {
                           txt += ev.results[i][0].transcript;
                         }
-                        setInput((prev) => (prev ? prev + ' ' : '') + txt.trim());
+                        const cleaned = txt.trim();
+                        if (cleaned && cleaned !== lastConcat) {
+                          lastConcat = cleaned;
+                          setInput((prev) => (prev ? prev + ' ' : '') + cleaned);
+                        }
                       };
                       r.onerror = () => {
                         setListening(false);
@@ -639,15 +695,15 @@ export default function Chat() {
                 >
                   <IoMicOutline size={18} />
                 </button>
-              ) : (
                 <button
                   aria-label="Send"
-                  className="shrink-0 p-2 rounded-xl btn-primary hover:opacity-90 hover-grow card-shadow"
+                  className="shrink-0 h-9 w-9 flex items-center justify-center rounded-full bg-black text-white hover:opacity-90 transition disabled:opacity-40"
+                  disabled={!input.trim() && !imageFile}
                   onClick={() => send()}
                 >
                   <RxPaperPlane size={18} />
                 </button>
-              )}
+              </div>
             </div>
           {imageFile && (
             <div className="mt-2 flex items-center gap-2">

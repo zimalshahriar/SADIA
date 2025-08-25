@@ -3,9 +3,10 @@ import { db } from "../firebase/config";
 import type { Program } from "../types/models";
 import { generateWithGemini, generateWithGeminiParts } from "./gemini";
 
-const IDENTITY_EN = "SADIA - Smart Autonomous Digital Intelligence Assistant, Nick name: Sadia. She is here to help Bangladeshi students who want to study abroad.";
-const IDENTITY_BN = "সাদিয়া (SADIA) — Smart Autonomous Digital Intelligence Assistant। ডাকনাম: Sadia। বাংলাদেশি শিক্ষার্থীদের বিদেশে পড়াশোনায় সাহায্য করার জন্যই তিনি আছেন।";
-const IDENTITY_BANGLISH = "SADIA - Smart Autonomous Digital Intelligence Assistant, nickname: Sadia. Bangladesh-i students der bideshe porashonay help korar jonno ami ekhane.";
+const IDENTITY_EN = "SADIA - Smart Autonomous Digital Intelligence Assistant (nickname: Sadia). She helps Bangladeshi students who want to study abroad.";
+const IDENTITY_BN = "সাদিয়া (SADIA) — Smart Autonomous Digital Intelligence Assistant। ডাকনাম Sadia। তিনি বাংলাদেশি শিক্ষার্থীদের বিদেশে পড়াশোনায় সাহায্যের জন্য আছেন।";
+// Banglish identity uses only formal pronouns (apni/apnar/apnake not tumi)
+const IDENTITY_BANGLISH = "SADIA - Smart Autonomous Digital Intelligence Assistant (nickname: Sadia). Ami Bangladesh-i students der bideshe porashona niye apnake assist korte ekhane.";
 
 function hasBangla(text: string) {
   return /[\u0980-\u09FF]/.test(text);
@@ -31,6 +32,24 @@ const POLITE_PHRASES: string[] = [
   // Banglish/romanized
   "dhonnobad", "donobad", "shukriya"
 ];
+
+// Simple greeting detection (short standalone greetings only)
+const GREETINGS: string[] = [
+  // English
+  "hi", "hi!", "hello", "hello!", "hey", "hey!", "hey there", "good morning", "good evening", "good afternoon",
+  // Bangla script
+  "হাই", "হ্যালো", "হেলো", "এই", "সুপ্রভাত", "শুভ সকাল", "শুভ সন্ধ্যা", "শুভ অপরাহ্ন", "আসসালামু আলাইকুম", "আসসালামু আলাইকুম।", "আসসালামু আলাইকুম!", "আসসালামু আলায়েকুম",
+  // Banglish/romanized
+  "assalamu alaikum", "assalamualaikum", "assalamualaikum!", "assalamu alaikum!", "salam", "salam!", "asalamu alaikum", "good night" // (occasionally used as greeting)
+];
+
+function isGreeting(q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return false;
+  // single or very short (<=4 words) message that matches a greeting variant
+  if (s.split(/\s+/).length > 4) return false;
+  return GREETINGS.includes(s);
+}
 
 function isPolitePhrase(q: string): boolean {
   const s = q.trim().toLowerCase();
@@ -370,10 +389,21 @@ export async function askSadia(question: string): Promise<string> {
   }
   if (isIdentityQuestion(q)) return lang === 'bn' ? IDENTITY_BN : lang === 'banglish' ? IDENTITY_BANGLISH : IDENTITY_EN;
 
+  // Greeting handling (before domain guard so a plain "hi" doesn't show restriction)
+  if (isGreeting(q)) {
+    if (lang === 'bn') {
+        return "হ্যালো! আমি সাদিয়া 👋 বাংলাদেশের শিক্ষার্থীদের বিদেশে পড়াশোনা বিষয়ে সহযোগিতা করি। আজ আপনাকে কীভাবে সহায়তা করতে পারি?";
+    }
+    if (lang === 'banglish') {
+        return "Hello! Ami Sadia 👋 Bangladesh-er students der bideshe porashona niye support kori. Ajke apnake kivabe assist korte pari?";
+    }
+      return "Hello! I’m Sadia 👋 I help Bangladeshi students with study abroad. How can I support you today?";
+  }
+
   if (!isDomainQuestion(q)) {
-    if (lang === 'bn') return "আমি শুধু বাংলাদেশি শিক্ষার্থীদের বিদেশে পড়াশোনা বিষয়েই সাহায্য করি। অনুগ্রহ করে সেই বিষয়ে প্রশ্ন করুন।";
-    if (lang === 'banglish') return "Ami shudhu Bangladesh-i students der bideshe porashona niye help kori. Oi topic e prosno korun, please.";
-    return "I can help with Study Abroad from Bangladesh topics only. Please ask a question in that area.";
+      if (lang === 'bn') return "আমি মূলত বাংলাদেশের শিক্ষার্থীদের বিদেশে পড়াশোনা বিষয়ে সহায়তা করি। অনুগ্রহ করে সেই বিষয়ে আপনার প্রশ্নটি বলুন যাতে আমি আপনাকে ভালোভাবে গাইড করতে পারি।";
+      if (lang === 'banglish') return "Ami fokus kori Bangladesh-er students der bideshe porashona niye sahajjo korte. Dayakore oi area te apnar prosno bolun jate ami apnake bhalo vabe guide korte pari.";
+      return "I focus on helping Bangladeshi students with study abroad. Could you please share your question in that area so I can guide you better?";
   }
   const programQuery = isProgramLookup(q);
   const programs = await loadPrograms();
@@ -386,9 +416,9 @@ export async function askSadia(question: string): Promise<string> {
   const ord = detectOrdinalIndex(q);
   const target = (ord !== null && ord >= 0 && ord < source.length) ? source[ord] : chooseBestProgram(source, q);
     if (!target) {
-      if (lang === 'bn') return "কোন প্রোগ্রামটি বোঝাতে চাচ্ছেন? নামটা একটু স্পষ্ট করে বলবেন?";
-      if (lang === 'banglish') return "Kon program ta bolchen? Nam ta ektu clear kore bolben?";
-      return "Which program do you mean? Please mention the name so I can show details.";
+  if (lang === 'bn') return "আপনি কোন প্রোগ্রামটি বোঝাতে চাচ্ছেন? নামটি একটু স্পষ্ট করে বলবেন?";
+  if (lang === 'banglish') return "Apni kon program ta bolchen? Nam ta ektu clear kore bolben?";
+  return "Which program do you mean? Please mention the name so I can show the details.";
     }
     const aboutText = await translateAboutIfNeeded(target.about, lang);
   const tuitionLabel = lang === 'bn' ? 'টিউশন' : 'Tuition';
@@ -397,16 +427,16 @@ export async function askSadia(question: string): Promise<string> {
     const flavor = (() => {
       if (lang === 'bn') {
         return [
-          "• আপনার লেভেল আর বাজেট মাথায় রেখে মিলিয়ে দেখুন।",
-          "• ইউনিভার্সিটির অফিসিয়াল সাইটে রিকোয়ারমেন্ট ও ডেডলাইন দেখে নিন।",
-          "• প্রয়োজনে IELTS/TOEFL প্রস্তুতি আগে থেকে নিন।",
+          "• আপনার লেভেল ও বাজেটের সাথে মানানসই কিনা মিলিয়ে দেখুন।",
+          "• অফিসিয়াল সাইটে ভর্তি শর্ত ও ডেডলাইন যাচাই করুন।",
+          "• প্রয়োজনে IELTS/TOEFL প্রস্তুতি আগে থেকেই নিন।",
         ];
       }
       if (lang === 'banglish') {
         return [
-          "• Apnar level ar budget er sathe mile kina check korun.",
-          "• University-r official site e requirement ar deadline dekhun.",
-          "• Proyojone IELTS/TOEFL age thekei ready rakhun.",
+          "• Apnar level o budget er sathe manansoi kina milie dekhun.",
+          "• Official site e vorti shortho o deadline jachai korun.",
+          "• Proyojone IELTS/TOEFL preparation age thekei nin.",
         ];
       }
       return [
@@ -439,31 +469,42 @@ export async function askSadia(question: string): Promise<string> {
   );
 
   const systemPrograms = `You are SADIA - Smart Autonomous Digital Intelligence Assistant (nickname: Sadia). You help Bangladeshi students who want to study abroad.
-For specific program recommendations, answer ONLY using the provided program entries. Do not invent universities, program names, or tuition figures beyond the provided data.
-You may add brief general tips (e.g., scholarship search, application timing) but keep them clearly separate from the listed programs.
+STRICT GROUNDING:
+- Use ONLY the provided program entries for specific recommendations.
+- NEVER invent or guess universities, program names, tuition, scholarship names, rankings, acceptance rates, emails, or URLs.
+- If data is missing, say it is not available instead of fabricating.
 
 Tone & style:
-- Warm, human, and encouraging—as if chatting with a student.
-- Vary your openings and avoid repetitive phrasing.
-- Keep sentences short and clear. Use concise bullet points for lists.
-- Include tuition (BDT, with commas) when relevant. Prefer low tuition when asked for affordability.
-- End with a brief helpful follow‑up like “Want me to narrow by country or level?”
+- Warm, encouraging, student‑friendly.
+- Vary openings; avoid repetitive phrasing.
+- Short clear sentences. Use concise bullet points.
+- Include tuition (BDT with commas) when present; prioritize lower tuition when affordability implied.
+- End with ONE brief contextual follow‑up (or omit if redundant).
 
-Language:
- - The user may write in Bangla or Banglish. Understand both.
- - Reply in the user’s language. If language is Banglish (Bangla written in Latin letters), write Bangla words using Latin letters (e.g., "kom khoroch er course").
+Language policy:
+- Detect user language (English, Bangla, Banglish).
+- For Bangla: use only formal second‑person pronouns (আপনি / আপনার / আপনাকে).
+- For Banglish: use only formal transliterations (apni / apnar / apnake). Never use tumi/tomar.
+- Mirror user language and script style; do not translate user’s proper nouns.
 
-Output: plain text suitable for a chat bubble (no markdown headers).`;
+Output: plain text (no markdown headings, no code fences, no excessive disclaimers).`;
 
   const systemGeneral = `You are SADIA - Smart Autonomous Digital Intelligence Assistant (nickname: Sadia). You help Bangladeshi students who want to study abroad.
-For general guidance (process, timelines, exams, budgeting, country advice), you may answer from your own knowledge tailored to Bangladeshi students.
-Do NOT invent specific universities, program names, or exact tuition figures unless they are provided. Prefer practical, actionable steps.
+Scope:
+- General guidance only (process, timelines, exams, budgeting, documents, country selection).
+- Do NOT invent specific universities, exact tuition numbers, scholarship names, or rankings unless explicitly provided.
 
 Tone & style:
-- Warm, human, and encouraging. Short sentences. Bulleted lists for steps.
-- End with a varied, concise follow‑up question only if helpful.
+- Warm, concise, actionable. Use short sentences + bullet points where useful.
+- Provide concrete next steps tailored for Bangladeshi students.
+- One brief follow‑up only if it adds value; otherwise end cleanly.
 
-Language: Match the user's language (Bangla/English/Banglish).`;
+Language policy:
+- Match user language (English / Bangla / Banglish).
+- Bangla must use formal second‑person (আপনি / আপনার / আপনাকে) only.
+- Banglish must use formal transliterations (apni / apnar / apnake) only; never tumi/tomar.
+
+Output: plain text (no markdown headings). Avoid redundant self‑descriptions after the first turn.`;
 
   const replyLang = lang === 'bn' ? 'Bangla' : lang === 'banglish' ? 'Banglish (Bangla written in Latin letters)' : 'English';
   const prevAvoid = lastCloserText ? `Avoid repeating this follow‑up line: "${lastCloserText}".` : '';
@@ -517,7 +558,32 @@ Language: Match the user's language (Bangla/English/Banglish).`;
     const closerBGL = pickCloser('banglish', parseFilters(q).wantLowCost, !!parseFilters(q).level);
     const openerPool = bn ? openersBN : bgl ? openersBGL : openersEN;
     const opener = openerPool[Math.floor(Math.random() * openerPool.length)];
-    const lines = relevant.map((p) => `• ${p.courseName} (${p.level}) — ${p.university}, ${p.city ? p.city + ", " : ""}${p.country} — Tuition: BDT ${Number(p.tuitionBDT || 0).toLocaleString()}`);
+    // Enhanced multi-line structured bullets with Focus line
+  async function focusSnippet(p: Program, lang: "en" | "bn" | "banglish"): Promise<string> {
+      const raw = (p.about || '').trim();
+      if (!raw) return lang === 'bn' ? 'উপলব্ধ নয়' : lang === 'banglish' ? 'Available na' : 'Not available';
+      // take first sentence or first 160 chars
+      let first = raw.split(/(?<=[.!?।])\s+/u)[0] || raw;
+      if (first.length > 160) first = first.slice(0, 157) + '…';
+      // Translate if needed
+      if (lang !== 'en') {
+        try {
+          first = await translateAboutIfNeeded(first, lang);
+        } catch {}
+      }
+      return first.replace(/\s+/g, ' ').trim();
+    }
+    const tuitionLabel = bn ? 'টিউশন' : 'Tuition';
+    const focusLabel = bn ? 'ফোকাস' : 'Focus';
+    const lines = await Promise.all(relevant.map(async (p) => {
+      const focus = await focusSnippet(p, lang);
+      const tuitionText = p.tuitionBDT ? `BDT ${Number(p.tuitionBDT).toLocaleString()}` : (bn ? 'উল্লেখ নেই' : 'Not provided');
+      return [
+        `• ${p.courseName} — ${p.university}, ${p.country}` + (p.city ? ` (${p.city})` : ''),
+        `  ${tuitionLabel}: ${tuitionText}`,
+        `  ${focusLabel}: ${focus}`,
+      ].join('\n');
+    }));
     return [opener, ...lines, bn ? closerBN : bgl ? closerBGL : closerEN].join("\n");
   }
   // General guidance fallback
