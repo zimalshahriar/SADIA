@@ -28,6 +28,7 @@ type Program = {
   country: string;
   tuitionBDT: number;
   about: string;
+  discipline: string;
   createdAt?: any;
 };
 
@@ -81,10 +82,28 @@ export default function Admin() {
   const [country, setCountry] = useState("");
   const [tuitionBDT, setTuitionBDT] = useState<string>("");
   const [about, setAbout] = useState("");
+  const DISCIPLINES = [
+    "Agriculture & Forestry",
+    "Applied Sciences & Professions",
+    "Arts, Design & Architecture",
+    "Business & Management",
+    "Computer Science & IT",
+    "Education & Training",
+    "Engineering & Technology",
+    "Environmental Studies & Earth Sciences",
+    "Hospitality, Leisure & Sports",
+    "Humanities",
+    "Journalism & Media",
+    "Law",
+    "Medicine & Health",
+    "Natural Sciences & Mathematics",
+    "Social Sciences"
+  ] as const;
+  const [discipline, setDiscipline] = useState<string>("");
 
   // data state
   const [items, setItems] = useState<Program[]>([]);
-  const [filter, setFilter] = useState<{ level?: string; country?: string; q?: string }>({});
+  const [filter, setFilter] = useState<{ level?: string; country?: string; discipline?: string; q?: string }>({});
   const [countrySuggestions, setCountrySuggestions] = useState<string[]>([]);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -142,6 +161,7 @@ export default function Admin() {
   await updateDoc(doc(db, "programs", p.id!), {
       courseName: p.courseName.trim(),
       level: p.level,
+  discipline: p.discipline,
       university: p.university.trim(),
       city: p.city.trim(),
       country: p.country.trim(),
@@ -157,8 +177,8 @@ export default function Admin() {
     e.preventDefault();
     setStatus(null);
     setSaving(true);
-    if (!courseName || !university) {
-      setStatus("Course name and University are required.");
+    if (!courseName || !university || !discipline) {
+      setStatus("Course name, University and Discipline are required.");
       setSaving(false);
       return;
     }
@@ -176,13 +196,14 @@ export default function Admin() {
     }
     try {
       const ref = await addDoc(collection(db, "programs"), {
-      courseName: courseName.trim(),
+  courseName: courseName.trim(),
       level,
       university: university.trim(),
       city: city.trim(),
       country: country.trim(),
       tuitionBDT: Number(tuitionBDT || 0),
       about: about.trim(),
+  discipline,
       createdAt: serverTimestamp(),
     });
       // Smooth transition to View with highlight
@@ -195,7 +216,8 @@ export default function Admin() {
     setCity("");
     setCountry("");
     setTuitionBDT("");
-    setAbout("");
+  setAbout("");
+  setDiscipline("");
     } finally {
       setSaving(false);
     }
@@ -221,9 +243,10 @@ export default function Admin() {
     return items.filter((it) => {
       if (filter.level && it.level !== filter.level) return false;
       if (filter.country && filter.country.length > 0 && !it.country.toLowerCase().includes(filter.country.toLowerCase())) return false;
+      if (filter.discipline && it.discipline !== filter.discipline) return false;
       if (filter.q) {
         const q = filter.q.toLowerCase();
-        const blob = `${it.courseName} ${it.university} ${it.city} ${it.country}`.toLowerCase();
+        const blob = `${it.courseName} ${it.university} ${it.city} ${it.country} ${it.discipline}`.toLowerCase();
         if (!blob.includes(q)) return false;
       }
       return true;
@@ -412,6 +435,13 @@ export default function Admin() {
                 <label className="text-xs text-muted">Tuition fees (BDT)</label>
                 <input type="number" min={0} className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={tuitionBDT} onChange={(e) => setTuitionBDT(e.target.value)} />
               </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted">Discipline</label>
+                <select className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={discipline} onChange={(e)=>setDiscipline(e.target.value)} required>
+                  <option value="">Select discipline</option>
+                  {DISCIPLINES.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className="text-xs text-muted">About</label>
@@ -432,12 +462,16 @@ export default function Admin() {
 
         <FadeSection show={tab === "view"}>
           <div className="mx-auto max-w-5xl">
-            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
               <input ref={searchRef} placeholder="Search..." className="rounded-lg border border-soft bg-card px-3 py-2" value={filter.q || ""} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} />
               <select className="rounded-lg border border-soft bg-card px-3 py-2" value={filter.level || ""} onChange={(e) => setFilter((f) => ({ ...f, level: e.target.value || undefined }))}>
                 <option value="">All levels</option>
                 <option value="Bachelors">Bachelor's</option>
                 <option value="Masters">Master's</option>
+              </select>
+              <select className="rounded-lg border border-soft bg-card px-3 py-2" value={filter.discipline || ''} onChange={(e)=>setFilter(f=>({...f, discipline: e.target.value || undefined}))}>
+                <option value="">All disciplines</option>
+                {DISCIPLINES.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
               <div className="relative">
                 <input
@@ -470,6 +504,7 @@ export default function Admin() {
                   <tr>
                     <th className="px-3 py-2 text-left">Course</th>
                     <th className="px-3 py-2 text-left">Level</th>
+                    <th className="px-3 py-2 text-left">Discipline</th>
                     <th className="px-3 py-2 text-left">University</th>
                     <th className="px-3 py-2 text-left">Location</th>
                     <th className="px-3 py-2 text-left">Tuition (BDT)</th>
@@ -485,6 +520,7 @@ export default function Admin() {
                     >
                       <td className="px-3 py-2">{p.courseName}</td>
                       <td className="px-3 py-2">{p.level}</td>
+                      <td className="px-3 py-2">{p.discipline}</td>
                       <td className="px-3 py-2">{p.university}</td>
                       <td className="px-3 py-2">{`${p.city ? p.city + ", " : ""}${p.country}`}</td>
                       <td className="px-3 py-2">{p.tuitionBDT?.toLocaleString()}</td>
@@ -517,6 +553,7 @@ export default function Admin() {
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
                     <div className="flex items-center justify-between"><span className="text-muted">Level</span><span>{p.level}</span></div>
+                    <div className="flex items-center justify-between"><span className="text-muted">Discipline</span><span className="text-right">{p.discipline}</span></div>
                     <div className="flex items-center justify-between"><span className="text-muted">University</span><span className="text-right">{p.university}</span></div>
                     <div className="flex items-center justify-between"><span className="text-muted">Location</span><span className="text-right">{`${p.city ? p.city + ', ' : ''}${p.country}`}</span></div>
                     <div className="flex items-center justify-between"><span className="text-muted">Tuition (BDT)</span><span className="text-right">{p.tuitionBDT?.toLocaleString()}</span></div>
@@ -577,6 +614,12 @@ export default function Admin() {
               <div>
                 <label className="text-xs text-muted">Tuition fees (BDT)</label>
                 <input type="number" min={0} className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={String(editDraft.tuitionBDT ?? '')} onChange={(e) => setEditDraft({ ...editDraft, tuitionBDT: Number(e.target.value || 0) })} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-muted">Discipline</label>
+                <select className="w-full rounded-lg border border-soft bg-card px-3 py-2" value={editDraft.discipline} onChange={(e)=>setEditDraft({ ...editDraft, discipline: e.target.value })}>
+                  {DISCIPLINES.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
             </div>
             <div className="mt-3">

@@ -150,7 +150,22 @@ function MessageBubble({ msg }: { msg: Message }) {
             className="mb-2 max-h-56 w-auto rounded-lg border border-soft object-contain"
           />
         )}
-        {msg.content && <>{msg.content}</>}
+        {msg.role === 'assistant' && msg.content === '…' ? (
+          <div className="typing-wrapper" aria-label="SADIA is typing">
+            <div className="typing-skeleton">
+              <div className="skeleton-line w-40" />
+              <div className="skeleton-line w-56 delay-1" />
+              <div className="skeleton-line w-32 delay-2" />
+            </div>
+            <div className="typing-dots mt-2">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        ) : (
+          msg.content && <>{msg.content}</>
+        )}
       </div>
       {isUser && <div className="ml-2" />}
     </div>
@@ -596,17 +611,7 @@ export default function Chat() {
               {messages.map((m) => (
                 <MessageBubble key={m.id} msg={m} />
               ))}
-              {/* Typing indicator when last assistant message is ellipsis */}
-              {messages.length > 0 && messages[messages.length - 1]?.content === "…" && (
-                <div className="w-full justify-start flex mb-3">
-                  <div className="mr-2 mt-1 h-7 w-7 shrink-0 rounded-full btn-primary flex items-center justify-center text-xs font-semibold">S</div>
-                  <div className="max-w-[78%] sm:max-w-[82%] rounded-2xl px-3.5 py-2 bubble-assistant rounded-bl-sm">
-                    <div className="typing-dots text-gray-700">
-                      <span></span><span></span><span></span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Typing indicator now rendered inline inside MessageBubble when content === '…' */}
               <div ref={listEndRef} />
             </>
           )}
